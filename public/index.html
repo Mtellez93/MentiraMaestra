@@ -14,7 +14,6 @@
     🎭 Mentira Maestra
   </h1>
 
-  <!-- LOBBY -->
   <div id="lobbyContainer">
 
     <div id="roomSection" class="mb-8 hidden">
@@ -26,9 +25,7 @@
 
     <div id="playersSection" class="mb-8 hidden">
       <h2 class="text-2xl mb-4">Jugadores</h2>
-
       <div id="playersList" class="space-y-2"></div>
-
       <div id="readyCounter"
            class="mt-6 text-3xl font-bold"></div>
 
@@ -42,19 +39,25 @@
 
   </div>
 
-  <!-- GAME AREA -->
   <div id="gameSection"></div>
+
+  <div id="timerContainer"
+       class="mt-6 hidden w-full">
+    <div class="w-full bg-gray-700 h-6 rounded">
+      <div id="timerBar"
+           class="bg-red-500 h-6 rounded transition-all">
+      </div>
+    </div>
+  </div>
 
 </div>
 
 <script>
 const socket = io("/host");
 let currentRoomCode = null;
-let previousReadyState = {};
+let timerInterval = null;
 
 socket.emit("createRoom");
-
-/* ROOM CREATED */
 
 socket.on("roomCreated", data => {
   currentRoomCode = data.code;
@@ -72,93 +75,56 @@ socket.on("roomCreated", data => {
     .src = data.qr;
 });
 
-/* LOBBY */
-
-socket.on("updatePlayers", players => {
-  renderLobby(players.map(name => ({
-    name,
-    ready: false
-  })));
-});
-
-socket.on("lobbyUpdate", data => {
-  renderLobby(data.playersStatus);
-});
-
-socket.on("allQuestionsSubmitted", () => {
-  const btn = document.getElementById("startBtn");
-  btn.disabled = false;
-  btn.classList.remove("opacity-50");
-});
-
-function renderLobby(players) {
-  const list = document.getElementById("playersList");
-  list.innerHTML = "";
-
-  let readyCount = 0;
-
-  players.forEach(p => {
-    if (p.ready) readyCount++;
-
-    const div = document.createElement("div");
-    div.className =
-      "flex justify-between items-center text-xl bg-gray-800 px-4 py-3 rounded";
-
-    if (p.ready && !previousReadyState[p.name]) {
-      div.classList.add("animate-bounce");
-      setTimeout(() => div.classList.remove("animate-bounce"), 600);
-    }
-
-    div.innerHTML = `
-      <span>${p.name}</span>
-      <span class="text-2xl">
-        ${p.ready ? "✔" : "⏳"}
-      </span>
-    `;
-
-    list.appendChild(div);
-    previousReadyState[p.name] = p.ready;
-  });
-
-  document.getElementById("readyCounter").innerText =
-    `${readyCount} / ${players.length} listos`;
-}
-
-/* START GAME */
-
 function startGame(){
   socket.emit("startGame", currentRoomCode);
 }
 
-function hideLobby() {
+socket.on("tvQuestion", q => {
   document.getElementById("lobbyContainer")
     .classList.add("hidden");
-}
 
-/* GAME EVENTS */
-
-socket.on("tvQuestion", q => {
-  hideLobby();
-
-  document.getElementById("gameSection").innerHTML =
-    `<h2 class="text-5xl mt-10">${q}</h2>`;
+  document.getElementById("gameSection")
+    .innerHTML =
+      `<h2 class="text-5xl mt-10">${q}</h2>`;
 });
 
-socket.on("instantTruthReveal", data => {
-  if (!data.players || data.players.length === 0) return;
+socket.on("tvTimer", data => {
 
-  document.getElementById("gameSection").innerHTML =
-    `<div class="text-4xl mt-10 animate-pulse">
-      🧠 ${data.players.join(", ")}
-      ${data.players.length > 1 ? "sabían" : "sabía"}
-      la respuesta directamente!
-     </div>`;
+  const container =
+    document.getElementById("timerContainer");
+  const bar =
+    document.getElementById("timerBar");
+
+  container.classList.remove("hidden");
+
+  const duration = data.duration;
+  const start = Date.now();
+
+  clearInterval(timerInterval);
+
+  timerInterval = setInterval(() => {
+    const elapsed = Date.now() - start;
+    const remaining =
+      Math.max(duration - elapsed, 0);
+
+    const percent =
+      (remaining / duration) * 100;
+
+    bar.style.width = percent + "%";
+
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+      container.classList.add("hidden");
+    }
+
+  }, 100);
 });
 
 socket.on("tvResults", data => {
-  document.getElementById("gameSection").innerHTML =
-    `<h2 class="text-4xl mt-10">Respuesta:</h2>
-     <p class="text-3xl mt-4">${data.answer}</p>`;
+  document.getElementById("gameSection")
+    .innerHTML =
+      `<h2 class="text-4xl mt-10">Respuesta:</h2>
+       <p class="text-3xl mt-4">${data.answer}</p>`;
 });
 
 socket.on("tvFinal", data => {
@@ -179,35 +145,13 @@ socket.on("tvFinal", data => {
     </button>
   `;
 
-  document.getElementById("gameSection").innerHTML = html;
+  document.getElementById("gameSection")
+    .innerHTML = html;
 });
 
 function newGame(){
   socket.emit("newGame", currentRoomCode);
 }
-
-socket.on("resetToLobby", data => {
-
-  document.getElementById("lobbyContainer")
-    .classList.remove("hidden");
-
-  document.getElementById("gameSection")
-    .innerHTML = "";
-
-  renderLobby(
-    data.players.map(name => ({
-      name,
-      ready: false
-    }))
-  );
-
-  document.getElementById("readyCounter").innerText =
-    `0 / ${data.players.length} listos`;
-
-  const btn = document.getElementById("startBtn");
-  btn.disabled = true;
-  btn.classList.add("opacity-50");
-});
 </script>
 
 </body>
