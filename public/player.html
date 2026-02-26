@@ -2,7 +2,9 @@
 <html>
 <head>
   <title>Mentira Maestra - Player</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -13,7 +15,7 @@
 <!-- CONTENEDOR PRINCIPAL -->
 <div class="flex-1 flex flex-col justify-center px-6">
 
-  <!-- JOIN -->
+  <!-- JOIN SCREEN -->
   <div id="joinScreen" class="space-y-4">
 
     <h1 class="text-3xl font-bold text-center mb-6">
@@ -36,10 +38,12 @@
     <p id="errorMsg" class="text-red-200 text-center text-sm"></p>
   </div>
 
-  <!-- GAME -->
-  <div id="gameScreen" class="hidden flex flex-col justify-center space-y-6">
+  <!-- GAME SCREEN -->
+  <div id="gameScreen"
+       class="hidden flex flex-col justify-center space-y-6">
 
-    <div id="gameContent" class="text-center"></div>
+    <div id="gameContent"
+         class="text-center"></div>
 
   </div>
 
@@ -62,11 +66,11 @@ if (roomFromURL) {
 function join(){
   const roomCode =
     document.getElementById("roomInput")
-    .value.trim().toUpperCase();
+      .value.trim().toUpperCase();
 
   const name =
     document.getElementById("nameInput")
-    .value.trim();
+      .value.trim();
 
   if (!roomCode || !name) {
     document.getElementById("errorMsg")
@@ -88,7 +92,8 @@ function join(){
     .classList.remove("hidden");
 
   document.getElementById("gameContent")
-    .innerHTML = "<h2 class='text-xl'>Conectando...</h2>";
+    .innerHTML =
+      "<h2 class='text-xl'>Conectando...</h2>";
 }
 
 /* ================= AUTH ================= */
@@ -101,16 +106,47 @@ socket.on("authAssigned", data => {
   localStorage.setItem("mm_token", token);
 });
 
-/* ================= ESTADOS ================= */
+/* ================= QUESTION PHASE ================= */
 
-socket.on("playerWaiting", () => {
+socket.on("playerQuestionPhase", () => {
   document.getElementById("gameContent")
     .innerHTML = `
-      <h2 class="text-2xl font-bold">
-        ⏳ Esperando inicio...
+      <h2 class="text-2xl font-bold mb-4">
+        Escribe tu pregunta 🧠
       </h2>
+
+      <input id="questionInput"
+        class="w-full p-4 rounded-xl text-black text-lg mb-3"
+        placeholder="Tu pregunta..." />
+
+      <input id="answerInput"
+        class="w-full p-4 rounded-xl text-black text-lg mb-4"
+        placeholder="Respuesta correcta..." />
+
+      <button onclick="sendQuestion()"
+        class="w-full bg-green-400 text-black text-lg font-bold p-4 rounded-xl active:scale-95 transition">
+        Enviar
+      </button>
     `;
 });
+
+function sendQuestion(){
+  const question =
+    document.getElementById("questionInput").value;
+
+  const answer =
+    document.getElementById("answerInput").value;
+
+  if (question.length < 10 || answer.length < 3) return;
+
+  socket.emit("submitQuestion", { question, answer });
+
+  document.getElementById("gameContent")
+    .innerHTML =
+      "<h2 class='text-xl'>Pregunta enviada ✔</h2>";
+}
+
+/* ================= WRITE LIE ================= */
 
 socket.on("playerWrite", () => {
   document.getElementById("gameContent")
@@ -129,6 +165,21 @@ socket.on("playerWrite", () => {
       </button>
     `;
 });
+
+function sendLie(){
+  const lie =
+    document.getElementById("lieInput").value;
+
+  if (!lie) return;
+
+  socket.emit("submitLie", lie);
+
+  document.getElementById("gameContent")
+    .innerHTML =
+      "<h2 class='text-xl'>Mentira enviada ✔</h2>";
+}
+
+/* ================= VOTING ================= */
 
 socket.on("playerVote", data => {
   let html = `
@@ -150,6 +201,16 @@ socket.on("playerVote", data => {
     .innerHTML = html;
 });
 
+function vote(id){
+  socket.emit("submitVote", id);
+
+  document.getElementById("gameContent")
+    .innerHTML =
+      "<h2 class='text-xl'>Voto enviado ✔</h2>";
+}
+
+/* ================= FINAL ================= */
+
 socket.on("playerFinal", () => {
   document.getElementById("gameContent")
     .innerHTML = `
@@ -159,37 +220,17 @@ socket.on("playerFinal", () => {
     `;
 });
 
-/* ================= ACTIONS ================= */
-
-function sendLie(){
-  const lie =
-    document.getElementById("lieInput").value;
-
-  socket.emit("submitLie", lie);
-
-  document.getElementById("gameContent")
-    .innerHTML = `
-      <h2 class="text-xl">
-        Mentira enviada ✔
-      </h2>
-    `;
-}
-
-function vote(id){
-  socket.emit("submitVote", id);
-
-  document.getElementById("gameContent")
-    .innerHTML = `
-      <h2 class="text-xl">
-        Voto enviado ✔
-      </h2>
-    `;
-}
-
 /* ================= ERROR ================= */
 
 socket.on("error", msg => {
-  document.getElementById("errorMsg").innerText = msg;
+  document.getElementById("errorMsg")
+    .innerText = msg;
+
+  document.getElementById("joinScreen")
+    .classList.remove("hidden");
+
+  document.getElementById("gameScreen")
+    .classList.add("hidden");
 });
 </script>
 
