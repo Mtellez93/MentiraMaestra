@@ -7,9 +7,6 @@ const path = require("path");
 const crypto = require("crypto");
 const QRCode = require("qrcode");
 
-process.on("uncaughtException", console.error);
-process.on("unhandledRejection", console.error);
-
 const PORT = process.env.PORT || 3000;
 const PUBLIC_URL =
   process.env.PUBLIC_URL ||
@@ -39,12 +36,8 @@ const verify = (id, token) =>
 const shuffle = (arr) =>
   arr.sort(() => Math.random() - 0.5);
 
-/* ================= NAMESPACES ================= */
-
 const hostNS = io.of("/host");
 const playerNS = io.of("/player");
-
-/* ================= ROOM ================= */
 
 function createRoom(hostSocket) {
   const code = crypto.randomBytes(3)
@@ -90,11 +83,7 @@ hostNS.on("connection", (socket) => {
   socket.on("startGame", (roomCode) => {
     const room = rooms.get(roomCode);
     if (!room) return;
-
-    if (room.questions.size !== room.players.size) {
-      console.log("Faltan preguntas");
-      return;
-    }
+    if (room.questions.size !== room.players.size) return;
 
     room.playerOrder =
       shuffle([...room.players.keys()]);
@@ -103,7 +92,6 @@ hostNS.on("connection", (socket) => {
 
     startRound(roomCode);
   });
-
 });
 
 /* ================= PLAYER ================= */
@@ -117,33 +105,23 @@ playerNS.on("connection", (socket) => {
       return;
     }
 
-    // 🔁 Reconexión segura
     if (playerId && token && verify(playerId, token)) {
       const existing = room.players.get(playerId);
       if (existing) {
         existing.socketId = socket.id;
-
         socket.join(roomCode);
         socket.data.playerId = playerId;
         socket.data.roomCode = roomCode;
-
-        socket.emit("playerWaiting");
-
+        socket.emit("playerQuestionPhase");
         return;
       }
     }
 
-    // 🆕 Nuevo jugador
     const newId = crypto.randomUUID();
     const newToken = sign(newId);
 
-    room.players.set(newId, {
-      name,
-      socketId: socket.id
-    });
-
+    room.players.set(newId, { name, socketId: socket.id });
     room.scores.set(newId, 0);
-
     room.stats.set(newId, {
       truthsGuessed: 0,
       liesFooledOthers: 0,
@@ -159,7 +137,7 @@ playerNS.on("connection", (socket) => {
       token: newToken
     });
 
-    socket.emit("playerWaiting");
+    socket.emit("playerQuestionPhase");
 
     hostNS.to(room.hostSocket).emit(
       "updatePlayers",
@@ -170,42 +148,40 @@ playerNS.on("connection", (socket) => {
   socket.on("submitQuestion", ({ question, answer }) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room) return;
+    if (question.length < 10 || answer.length < 3) return;
 
-    if (question.length < 10 || answer.length < 3)
-      return;
+    room.questions.set(socket.data.playerId, { question, answer });
 
-    room.questions.set(
-      socket.data.playerId,
-      { question, answer }
+    const playersStatus = [...room.players.entries()].map(
+      ([id, player]) => ({
+        name: player.name,
+        ready: room.questions.has(id)
+      })
     );
 
-    hostNS.to(room.hostSocket).emit(
-      "questionsProgress",
-      {
-        submitted: room.questions.size,
-        total: room.players.size
-      }
-    );
+    hostNS.to(room.hostSocket).emit("lobbyUpdate", {
+      playersStatus
+    });
+
+    if (room.questions.size === room.players.size) {
+      hostNS.to(room.hostSocket)
+        .emit("allQuestionsSubmitted");
+    }
   });
 
   socket.on("submitLie", (lie) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room) return;
-    if (socket.data.playerId === room.currentAsker)
-      return;
-
+    if (socket.data.playerId === room.currentAsker) return;
     room.lies.set(socket.data.playerId, lie);
   });
 
   socket.on("submitVote", (voteId) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room) return;
-    if (socket.data.playerId === room.currentAsker)
-      return;
-
+    if (socket.data.playerId === room.currentAsker) return;
     room.votes.set(socket.data.playerId, voteId);
   });
-
 });
 
 /* ================= GAME FLOW ================= */
@@ -226,12 +202,10 @@ function startRound(roomCode) {
     room.questions.get(askerId);
 
   room.currentAsker = askerId;
-  room.currentQuestion = question;
   room.answer = answer;
 
   room.lies.clear();
   room.votes.clear();
-  room.state = "writing";
 
   hostNS.to(room.hostSocket)
     .emit("tvQuestion", question);
@@ -246,8 +220,6 @@ function startRound(roomCode) {
 function startVoting(roomCode) {
   const room = rooms.get(roomCode);
   if (!room) return;
-
-  room.state = "voting";
 
   const options = [
     ...room.lies.entries(),
@@ -271,7 +243,6 @@ function calculateScores(roomCode) {
   if (!room) return;
 
   let truthVotes = 0;
-  const lieVotesCount = new Map();
 
   for (const [voterId, voteId] of room.votes.entries()) {
     if (voteId === "truth") {
@@ -280,17 +251,10 @@ function calculateScores(roomCode) {
         voterId,
         room.scores.get(voterId) + 2
       );
-      room.stats.get(voterId).truthsGuessed++;
     } else if (room.scores.has(voteId)) {
       room.scores.set(
         voteId,
         room.scores.get(voteId) + 1
-      );
-      room.stats.get(voteId).liesFooledOthers++;
-      room.stats.get(voterId).gotFooled++;
-      lieVotesCount.set(
-        voteId,
-        (lieVotesCount.get(voteId) || 0) + 1
       );
     }
   }
@@ -301,10 +265,6 @@ function calculateScores(roomCode) {
       room.scores.get(room.currentAsker) + 2
     );
   }
-
-  room.roundStats.push({
-    lieVotesCount
-  });
 
   hostNS.to(room.hostSocket)
     .emit("tvResults", {
@@ -327,34 +287,11 @@ function endGame(roomCode) {
     .sort((a,b)=>b[1]-a[1])
     .map(([id,score])=>({
       name: room.players.get(id).name,
-      score,
-      stats: room.stats.get(id)
+      score
     }));
 
-  const mostLies = ranking.reduce((a,b)=>
-    b.stats.liesFooledOthers >
-    a.stats.liesFooledOthers ? b : a
-  );
-
-  const mostTruths = ranking.reduce((a,b)=>
-    b.stats.truthsGuessed >
-    a.stats.truthsGuessed ? b : a
-  );
-
-  const mostFooled = ranking.reduce((a,b)=>
-    b.stats.gotFooled >
-    a.stats.gotFooled ? b : a
-  );
-
   hostNS.to(room.hostSocket)
-    .emit("tvFinal", {
-      ranking,
-      awards: {
-        mostLies,
-        mostTruths,
-        mostFooled
-      }
-    });
+    .emit("tvFinal", { ranking });
 }
 
 server.listen(PORT, () =>
