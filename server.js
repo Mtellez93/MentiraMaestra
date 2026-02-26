@@ -1,7 +1,14 @@
+"use strict";
+
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
+const crypto = require("crypto");
+
+const PORT = process.env.PORT || 3000;
+const WRITE_TIME = 30000;
+const VOTE_TIME = 20000;
 
 const app = express();
 const server = http.createServer(app);
@@ -9,160 +16,193 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const TOTAL_ROUNDS = 5;
-const WRITE_TIME = 40;
-const VOTE_TIME = 25;
+const rooms = new Map();
 
-const questions = [
-  { question: "¿Cuál es el nombre real del muñeco del Monopoly?", answer: "Rich Uncle Pennybags" },
-  { question: "¿Cuántos corazones tiene un pulpo?", answer: "3" },
-  { question: "¿En qué país se inventó el karaoke?", answer: "Japón" },
-  { question: "¿Qué animal no puede saltar?", answer: "Elefante" }
-];
+const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
 
-let rooms = {};
+function createRoom() {
+  const code = crypto.randomBytes(3).toString("hex").toUpperCase();
+  rooms.set(code, {
+    hostSocket: null,
+    players: new Map(),
+    scores: new Map(),
+    stats: new Map(),
+    questions: new Map(),
+    playerOrder: [],
+    currentRoundIndex: 0,
+    currentAsker: null,
+    answer: null,
+    lies: new Map(),
+    votes: new Map(),
+  });
+  return code;
+}
+
+/* ---------------- HOST ---------------- */
 
 io.on("connection", (socket) => {
 
+  /* TV crea sala */
   socket.on("createRoom", () => {
-    const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-
-    rooms[roomCode] = {
-      players: {},
-      scores: {},
-      round: 0,
-      question: null,
-      answer: null,
-      lies: {},
-      votes: {}
-    };
-
-    socket.join(roomCode);
-    socket.emit("roomCreated", roomCode);
+    const code = createRoom();
+    rooms.get(code).hostSocket = socket.id;
+    socket.join(code);
+    socket.emit("roomCreated", code);
   });
 
+  /* PLAYER se une */
   socket.on("joinRoom", ({ roomCode, name }) => {
-    const room = rooms[roomCode];
+    const room = rooms.get(roomCode);
     if (!room) return;
 
-    room.players[socket.id] = name;
-    room.scores[socket.id] = 0;
+    const playerId = crypto.randomUUID();
+
+    room.players.set(playerId, { name, socketId: socket.id });
+    room.scores.set(playerId, 0);
+    room.stats.set(playerId, {
+      truthsGuessed: 0,
+      liesFooledOthers: 0,
+      gotFooled: 0,
+    });
 
     socket.join(roomCode);
-    io.to(roomCode).emit("updatePlayers", room.players);
+    socket.data.playerId = playerId;
+    socket.data.roomCode = roomCode;
+
+    io.to(roomCode).emit("updatePlayers",
+      [...room.players.values()].map(p => p.name)
+    );
   });
 
+  /* PLAYER envía pregunta */
+  socket.on("submitQuestion", ({ question, answer }) => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!room) return;
+    if (question.length < 10 || answer.length < 3) return;
+
+    room.questions.set(socket.data.playerId, { question, answer });
+
+    io.to(room.hostSocket).emit("questionsProgress", {
+      submitted: room.questions.size,
+      total: room.players.size
+    });
+  });
+
+  /* HOST inicia */
   socket.on("startGame", (roomCode) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    if (room.questions.size !== room.players.size) return;
+
+    room.playerOrder = shuffle([...room.players.keys()]);
+    room.currentRoundIndex = 0;
+
     startRound(roomCode);
   });
 
-  socket.on("submitLie", ({ roomCode, lie }) => {
-    const room = rooms[roomCode];
+  /* Mentiras */
+  socket.on("submitLie", (lie) => {
+    const room = rooms.get(socket.data.roomCode);
     if (!room) return;
-
-    room.lies[socket.id] = lie;
-
-    if (Object.keys(room.lies).length === Object.keys(room.players).length) {
-      startVoting(roomCode);
-    }
+    if (socket.data.playerId === room.currentAsker) return;
+    room.lies.set(socket.data.playerId, lie);
   });
 
-  socket.on("submitVote", ({ roomCode, vote }) => {
-    const room = rooms[roomCode];
+  /* Votos */
+  socket.on("submitVote", (voteId) => {
+    const room = rooms.get(socket.data.roomCode);
     if (!room) return;
-
-    room.votes[socket.id] = vote;
-
-    if (Object.keys(room.votes).length === Object.keys(room.players).length) {
-      calculateScores(roomCode);
-    }
+    if (socket.data.playerId === room.currentAsker) return;
+    room.votes.set(socket.data.playerId, voteId);
   });
 
 });
 
-function startRound(roomCode) {
-  const room = rooms[roomCode];
-  room.round++;
+/* ---------------- GAME FLOW ---------------- */
 
-  if (room.round > TOTAL_ROUNDS) {
-    io.to(roomCode).emit("gameOver", getScoreboard(room));
+function startRound(roomCode) {
+  const room = rooms.get(roomCode);
+  if (!room) return;
+
+  if (room.currentRoundIndex >= room.playerOrder.length) {
+    endGame(roomCode);
     return;
   }
 
-  const randomQ = questions[Math.floor(Math.random() * questions.length)];
-  room.question = randomQ.question;
-  room.answer = randomQ.answer;
-  room.lies = {};
-  room.votes = {};
+  const askerId = room.playerOrder[room.currentRoundIndex];
+  const { question, answer } = room.questions.get(askerId);
 
-  io.to(roomCode).emit("newRound", {
-    round: room.round,
-    total: TOTAL_ROUNDS,
-    question: room.question,
-    writeTime: WRITE_TIME
-  });
+  room.currentAsker = askerId;
+  room.answer = answer;
+  room.lies.clear();
+  room.votes.clear();
 
-  setTimeout(() => startVoting(roomCode), WRITE_TIME * 1000);
+  io.to(roomCode).emit("tvQuestion", question);
+  io.to(roomCode).emit("playerWrite", { askerId });
+
+  setTimeout(() => startVoting(roomCode), WRITE_TIME);
 }
 
 function startVoting(roomCode) {
-  const room = rooms[roomCode];
+  const room = rooms.get(roomCode);
+  if (!room) return;
 
-  let options = Object.values(room.lies);
-  options.push(room.answer);
-  options = options.sort(() => Math.random() - 0.5);
+  const options = [
+    ...room.lies.entries(),
+    ["truth", room.answer],
+  ].map(([id, text]) => ({ id, text }));
 
-  io.to(roomCode).emit("startVoting", {
+  shuffle(options);
+
+  io.to(roomCode).emit("playerVote", {
     options,
-    voteTime: VOTE_TIME
+    askerId: room.currentAsker
   });
 
-  setTimeout(() => calculateScores(roomCode), VOTE_TIME * 1000);
+  setTimeout(() => calculateScores(roomCode), VOTE_TIME);
 }
 
 function calculateScores(roomCode) {
-  const room = rooms[roomCode];
+  const room = rooms.get(roomCode);
+  if (!room) return;
 
-  let tricked = {};
-  let voteDetails = [];
+  let truthVotes = 0;
 
-  for (let voter in room.votes) {
-    const vote = room.votes[voter];
-
-    voteDetails.push({
-      voter: room.players[voter],
-      vote: vote
-    });
-
-    if (vote === room.answer) {
-      room.scores[voter] += 1000;
-    } else {
-      const liar = Object.keys(room.lies).find(id => room.lies[id] === vote);
-      if (liar && liar !== voter) {
-        room.scores[liar] += 500;
-        if (!tricked[liar]) tricked[liar] = [];
-        tricked[liar].push(room.players[voter]);
-      }
+  for (const [voterId, voteId] of room.votes.entries()) {
+    if (voteId === "truth") {
+      truthVotes++;
+      room.scores.set(voterId, room.scores.get(voterId) + 2);
+    } else if (room.scores.has(voteId)) {
+      room.scores.set(voteId, room.scores.get(voteId) + 1);
     }
   }
 
-  io.to(roomCode).emit("roundResults", {
-    correct: room.answer,
-    tricked,
-    voteDetails,
-    lies: room.lies,
-    scoreboard: getScoreboard(room),
-    players: room.players
+  if (truthVotes === 0) {
+    room.scores.set(
+      room.currentAsker,
+      room.scores.get(room.currentAsker) + 2
+    );
+  }
+
+  io.to(roomCode).emit("tvResults", {
+    answer: room.answer,
+    scores: Object.fromEntries(room.scores)
   });
 
-  setTimeout(() => startRound(roomCode), 8000);
+  room.currentRoundIndex++;
+  setTimeout(() => startRound(roomCode), 5000);
 }
 
-function getScoreboard(room) {
-  return Object.keys(room.players).map(id => ({
-    name: room.players[id],
-    score: room.scores[id]
-  })).sort((a, b) => b.score - a.score);
+function endGame(roomCode) {
+  const room = rooms.get(roomCode);
+  if (!room) return;
+
+  const ranking = [...room.scores.entries()]
+    .sort((a,b) => b[1]-a[1]);
+
+  io.to(roomCode).emit("tvFinal", ranking);
 }
 
-server.listen(3000, () => console.log("Servidor en puerto 3000"));
+server.listen(PORT, () =>
+  console.log(`Servidor corriendo en puerto ${PORT}`)
+);
