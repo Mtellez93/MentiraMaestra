@@ -11,7 +11,7 @@ process.on("uncaughtException", console.error);
 process.on("unhandledRejection", console.error);
 
 const PORT = process.env.PORT || 3000;
-const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+const PUBLIC_URL = process.env.PUBLIC_URL || "https://mentiramaestra.onrender.com";
 const SECRET = process.env.GAME_SECRET || "super_secret_key";
 
 const WRITE_TIME = 30000;
