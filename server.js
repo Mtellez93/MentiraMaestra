@@ -11,8 +11,13 @@ process.on("uncaughtException", console.error);
 process.on("unhandledRejection", console.error);
 
 const PORT = process.env.PORT || 3000;
-const PUBLIC_URL = process.env.PUBLIC_URL || "https://mentiramaestra.onrender.com";
-const SECRET = process.env.GAME_SECRET || "super_secret_key";
+const PUBLIC_URL =
+  process.env.PUBLIC_URL ||
+  "https://mentiramaestra.onrender.com";
+
+const SECRET =
+  process.env.GAME_SECRET ||
+  "cambia_esto_por_una_clave_larga_segura";
 
 const WRITE_TIME = 30000;
 const VOTE_TIME = 20000;
@@ -31,7 +36,8 @@ const sign = (id) =>
 const verify = (id, token) =>
   sign(id) === token;
 
-const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
+const shuffle = (arr) =>
+  arr.sort(() => Math.random() - 0.5);
 
 /* ================= NAMESPACES ================= */
 
@@ -41,7 +47,9 @@ const playerNS = io.of("/player");
 /* ================= ROOM ================= */
 
 function createRoom(hostSocket) {
-  const code = crypto.randomBytes(3).toString("hex").toUpperCase();
+  const code = crypto.randomBytes(3)
+    .toString("hex")
+    .toUpperCase();
 
   rooms.set(code, {
     hostSocket,
@@ -71,7 +79,9 @@ hostNS.on("connection", (socket) => {
     const code = createRoom(socket.id);
     socket.join(code);
 
-    const joinURL = `${PUBLIC_URL}/player.html?room=${code}`;
+    const joinURL =
+      `${PUBLIC_URL}/player.html?room=${code}`;
+
     const qr = await QRCode.toDataURL(joinURL);
 
     socket.emit("roomCreated", { code, qr });
@@ -80,9 +90,15 @@ hostNS.on("connection", (socket) => {
   socket.on("startGame", (roomCode) => {
     const room = rooms.get(roomCode);
     if (!room) return;
-    if (room.questions.size !== room.players.size) return;
 
-    room.playerOrder = shuffle([...room.players.keys()]);
+    if (room.questions.size !== room.players.size) {
+      console.log("Faltan preguntas");
+      return;
+    }
+
+    room.playerOrder =
+      shuffle([...room.players.keys()]);
+
     room.currentRoundIndex = 0;
 
     startRound(roomCode);
@@ -96,7 +112,10 @@ playerNS.on("connection", (socket) => {
 
   socket.on("joinRoom", ({ roomCode, name, playerId, token }) => {
     const room = rooms.get(roomCode);
-    if (!room) return;
+    if (!room) {
+      socket.emit("error", "Sala no existe");
+      return;
+    }
 
     // 🔁 Reconexión segura
     if (playerId && token && verify(playerId, token)) {
@@ -108,7 +127,8 @@ playerNS.on("connection", (socket) => {
         socket.data.playerId = playerId;
         socket.data.roomCode = roomCode;
 
-        restorePlayerState(socket, room, roomCode);
+        socket.emit("playerWaiting");
+
         return;
       }
     }
@@ -117,8 +137,13 @@ playerNS.on("connection", (socket) => {
     const newId = crypto.randomUUID();
     const newToken = sign(newId);
 
-    room.players.set(newId, { name, socketId: socket.id });
+    room.players.set(newId, {
+      name,
+      socketId: socket.id
+    });
+
     room.scores.set(newId, 0);
+
     room.stats.set(newId, {
       truthsGuessed: 0,
       liesFooledOthers: 0,
@@ -134,7 +159,10 @@ playerNS.on("connection", (socket) => {
       token: newToken
     });
 
-    hostNS.to(room.hostSocket).emit("updatePlayers",
+    socket.emit("playerWaiting");
+
+    hostNS.to(room.hostSocket).emit(
+      "updatePlayers",
       [...room.players.values()].map(p => p.name)
     );
   });
@@ -142,27 +170,39 @@ playerNS.on("connection", (socket) => {
   socket.on("submitQuestion", ({ question, answer }) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room) return;
-    if (question.length < 10 || answer.length < 3) return;
 
-    room.questions.set(socket.data.playerId, { question, answer });
+    if (question.length < 10 || answer.length < 3)
+      return;
 
-    hostNS.to(room.hostSocket).emit("questionsProgress", {
-      submitted: room.questions.size,
-      total: room.players.size
-    });
+    room.questions.set(
+      socket.data.playerId,
+      { question, answer }
+    );
+
+    hostNS.to(room.hostSocket).emit(
+      "questionsProgress",
+      {
+        submitted: room.questions.size,
+        total: room.players.size
+      }
+    );
   });
 
   socket.on("submitLie", (lie) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room) return;
-    if (socket.data.playerId === room.currentAsker) return;
+    if (socket.data.playerId === room.currentAsker)
+      return;
+
     room.lies.set(socket.data.playerId, lie);
   });
 
   socket.on("submitVote", (voteId) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room) return;
-    if (socket.data.playerId === room.currentAsker) return;
+    if (socket.data.playerId === room.currentAsker)
+      return;
+
     room.votes.set(socket.data.playerId, voteId);
   });
 
@@ -179,20 +219,28 @@ function startRound(roomCode) {
     return;
   }
 
-  const askerId = room.playerOrder[room.currentRoundIndex];
-  const { question, answer } = room.questions.get(askerId);
+  const askerId =
+    room.playerOrder[room.currentRoundIndex];
+
+  const { question, answer } =
+    room.questions.get(askerId);
 
   room.currentAsker = askerId;
   room.currentQuestion = question;
   room.answer = answer;
+
   room.lies.clear();
   room.votes.clear();
   room.state = "writing";
 
-  hostNS.to(room.hostSocket).emit("tvQuestion", question);
-  playerNS.to(roomCode).emit("playerWrite", { askerId });
+  hostNS.to(room.hostSocket)
+    .emit("tvQuestion", question);
 
-  setTimeout(() => startVoting(roomCode), WRITE_TIME);
+  playerNS.to(roomCode)
+    .emit("playerWrite", { askerId });
+
+  setTimeout(() => startVoting(roomCode),
+    WRITE_TIME);
 }
 
 function startVoting(roomCode) {
@@ -208,12 +256,14 @@ function startVoting(roomCode) {
 
   shuffle(options);
 
-  playerNS.to(roomCode).emit("playerVote", {
-    options,
-    askerId: room.currentAsker
-  });
+  playerNS.to(roomCode)
+    .emit("playerVote", {
+      options,
+      askerId: room.currentAsker
+    });
 
-  setTimeout(() => calculateScores(roomCode), VOTE_TIME);
+  setTimeout(() => calculateScores(roomCode),
+    VOTE_TIME);
 }
 
 function calculateScores(roomCode) {
@@ -226,13 +276,22 @@ function calculateScores(roomCode) {
   for (const [voterId, voteId] of room.votes.entries()) {
     if (voteId === "truth") {
       truthVotes++;
-      room.scores.set(voterId, room.scores.get(voterId) + 2);
+      room.scores.set(
+        voterId,
+        room.scores.get(voterId) + 2
+      );
       room.stats.get(voterId).truthsGuessed++;
     } else if (room.scores.has(voteId)) {
-      room.scores.set(voteId, room.scores.get(voteId) + 1);
+      room.scores.set(
+        voteId,
+        room.scores.get(voteId) + 1
+      );
       room.stats.get(voteId).liesFooledOthers++;
       room.stats.get(voterId).gotFooled++;
-      lieVotesCount.set(voteId, (lieVotesCount.get(voteId) || 0) + 1);
+      lieVotesCount.set(
+        voteId,
+        (lieVotesCount.get(voteId) || 0) + 1
+      );
     }
   }
 
@@ -244,84 +303,58 @@ function calculateScores(roomCode) {
   }
 
   room.roundStats.push({
-    question: room.currentQuestion,
-    truthVotes,
     lieVotesCount
   });
 
-  hostNS.to(room.hostSocket).emit("tvResults", {
-    answer: room.answer,
-    scores: Object.fromEntries(room.scores)
-  });
+  hostNS.to(room.hostSocket)
+    .emit("tvResults", {
+      answer: room.answer,
+      scores: Object.fromEntries(room.scores)
+    });
 
   room.currentRoundIndex++;
-  setTimeout(() => startRound(roomCode), 5000);
+
+  setTimeout(() => startRound(roomCode),
+    5000);
 }
 
 function endGame(roomCode) {
   const room = rooms.get(roomCode);
   if (!room) return;
 
-  const ranking = [...room.scores.entries()]
-    .sort((a,b) => b[1] - a[1])
-    .map(([id, score]) => ({
-      id,
+  const ranking =
+    [...room.scores.entries()]
+    .sort((a,b)=>b[1]-a[1])
+    .map(([id,score])=>({
       name: room.players.get(id).name,
       score,
       stats: room.stats.get(id)
     }));
 
-  const mostLies = ranking.reduce((a,b) =>
-    b.stats.liesFooledOthers > a.stats.liesFooledOthers ? b : a
+  const mostLies = ranking.reduce((a,b)=>
+    b.stats.liesFooledOthers >
+    a.stats.liesFooledOthers ? b : a
   );
 
-  const mostTruths = ranking.reduce((a,b) =>
-    b.stats.truthsGuessed > a.stats.truthsGuessed ? b : a
+  const mostTruths = ranking.reduce((a,b)=>
+    b.stats.truthsGuessed >
+    a.stats.truthsGuessed ? b : a
   );
 
-  const mostFooled = ranking.reduce((a,b) =>
-    b.stats.gotFooled > a.stats.gotFooled ? b : a
+  const mostFooled = ranking.reduce((a,b)=>
+    b.stats.gotFooled >
+    a.stats.gotFooled ? b : a
   );
 
-  let topLiePlayer = null;
-  let topLieVotes = 0;
-
-  room.roundStats.forEach(r => {
-    r.lieVotesCount.forEach((votes, playerId) => {
-      if (votes > topLieVotes) {
-        topLieVotes = votes;
-        topLiePlayer = playerId;
+  hostNS.to(room.hostSocket)
+    .emit("tvFinal", {
+      ranking,
+      awards: {
+        mostLies,
+        mostTruths,
+        mostFooled
       }
     });
-  });
-
-  hostNS.to(room.hostSocket).emit("tvFinal", {
-    ranking,
-    awards: {
-      mostLies,
-      mostTruths,
-      mostFooled,
-      mostBelievedLie: topLiePlayer
-        ? room.players.get(topLiePlayer).name
-        : null
-    }
-  });
-}
-
-function restorePlayerState(socket, room, roomCode) {
-  if (room.state === "writing") {
-    socket.emit("playerWrite", { askerId: room.currentAsker });
-  } else if (room.state === "voting") {
-    const options = [
-      ...room.lies.entries(),
-      ["truth", room.answer]
-    ].map(([id, text]) => ({ id, text }));
-    socket.emit("playerVote", { options, askerId: room.currentAsker });
-  } else if (room.state === "finished") {
-    socket.emit("playerFinal");
-  } else {
-    socket.emit("playerWaiting");
-  }
 }
 
 server.listen(PORT, () =>
