@@ -1,13 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Mentira Maestra - TV</title>
-<script src="/socket.io/socket.io.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
+  <title>Mentira Maestra - TV</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
+
 <body class="bg-black text-white min-h-screen flex flex-col items-center justify-center">
 
-<div id="screen" class="text-center"></div>
+<div class="text-center max-w-3xl w-full px-6">
+
+  <h1 class="text-5xl font-bold mb-6">
+    🎭 Mentira Maestra
+  </h1>
+
+  <!-- CODIGO Y QR -->
+  <div id="roomSection" class="mb-8 hidden">
+    <h2 class="text-3xl mb-2">
+      Código: <span id="roomCode"></span>
+    </h2>
+
+    <img id="qrImage" class="mx-auto mt-4 w-48">
+
+    <p class="mt-4 text-gray-300">
+      Escanea el QR o entra a:
+      <br>
+      mentiramaestra.onrender.com/player.html
+    </p>
+  </div>
+
+  <!-- JUGADORES -->
+  <div id="playersSection" class="mb-8 hidden">
+    <h2 class="text-2xl mb-4">Jugadores</h2>
+    <div id="playersList" class="space-y-2"></div>
+
+    <button onclick="startGame()"
+      class="mt-6 bg-green-500 px-6 py-3 rounded text-xl font-bold">
+      Iniciar partida
+    </button>
+  </div>
+
+  <!-- PANTALLA DINAMICA -->
+  <div id="gameSection"></div>
+
+</div>
 
 <script>
 const socket = io("/host");
@@ -15,45 +51,54 @@ let currentRoomCode = null;
 
 socket.emit("createRoom");
 
+/* ================= ROOM CREATED ================= */
+
 socket.on("roomCreated", data => {
   currentRoomCode = data.code;
 
-  document.getElementById("screen").innerHTML = `
-    <h1 class="text-5xl mb-4">Mentira Maestra</h1>
-    <h2 class="text-3xl">Código: ${data.code}</h2>
-    <img src="${data.qr}" class="mx-auto mt-6 w-48">
-    <p class="mt-4">Escanea para jugar</p>
-  `;
+  document.getElementById("roomSection").classList.remove("hidden");
+  document.getElementById("playersSection").classList.remove("hidden");
+
+  document.getElementById("roomCode").innerText = data.code;
+  document.getElementById("qrImage").src = data.qr;
 });
 
+/* ================= UPDATE PLAYERS ================= */
+
 socket.on("updatePlayers", players => {
-  document.getElementById("screen").innerHTML = `
-    <h1 class="text-4xl mb-4">Jugadores</h1>
-    ${players.map(p=>`<div>${p}</div>`).join("")}
-    <button onclick="startGame()"
-      class="mt-6 bg-green-500 px-6 py-3 rounded">
-      Iniciar partida
-    </button>
-  `;
+  const list = document.getElementById("playersList");
+  list.innerHTML = "";
+
+  players.forEach(p => {
+    const div = document.createElement("div");
+    div.className = "text-xl";
+    div.innerText = p;
+    list.appendChild(div);
+  });
 });
+
+/* ================= START ================= */
 
 function startGame(){
   socket.emit("startGame", currentRoomCode);
 }
 
+/* ================= GAME STATES ================= */
+
 socket.on("tvQuestion", q => {
-  document.getElementById("screen").innerHTML =
-    `<h1 class="text-4xl">${q}</h1>`;
+  document.getElementById("gameSection").innerHTML =
+    `<h2 class="text-4xl mt-10">${q}</h2>`;
 });
 
 socket.on("tvResults", data => {
-  document.getElementById("screen").innerHTML =
-    `<h1 class="text-4xl">Respuesta:</h1>
+  document.getElementById("gameSection").innerHTML =
+    `<h2 class="text-4xl mt-10">Respuesta:</h2>
      <p class="text-3xl mt-4">${data.answer}</p>`;
 });
 
 socket.on("tvFinal", data => {
-  let html = `<h1 class="text-5xl mb-6">🏆 RESULTADOS</h1>`;
+  let html = `<h1 class="text-5xl mt-10 mb-6">🏆 RESULTADOS</h1>`;
+
   html += data.ranking.map((p,i)=>
     `<div class="text-2xl">${i+1}. ${p.name} - ${p.score} pts</div>`
   ).join("");
@@ -66,7 +111,7 @@ socket.on("tvFinal", data => {
     </div>
   `;
 
-  document.getElementById("screen").innerHTML = html;
+  document.getElementById("gameSection").innerHTML = html;
 });
 </script>
 
