@@ -7,7 +7,13 @@ const path = require("path");
 const crypto = require("crypto");
 const QRCode = require("qrcode");
 
+process.on("uncaughtException", console.error);
+process.on("unhandledRejection", console.error);
+
 const PORT = process.env.PORT || 3000;
+const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+const SECRET = process.env.GAME_SECRET || "super_secret_key";
+
 const WRITE_TIME = 30000;
 const VOTE_TIME = 20000;
 
@@ -19,29 +25,39 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const rooms = new Map();
 
+const sign = (id) =>
+  crypto.createHmac("sha256", SECRET).update(id).digest("hex");
+
+const verify = (id, token) =>
+  sign(id) === token;
+
 const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
 
 /* ================= NAMESPACES ================= */
 
-const hostNamespace = io.of("/host");
-const playerNamespace = io.of("/player");
+const hostNS = io.of("/host");
+const playerNS = io.of("/player");
 
 /* ================= ROOM ================= */
 
-function createRoom(hostSocketId) {
+function createRoom(hostSocket) {
   const code = crypto.randomBytes(3).toString("hex").toUpperCase();
 
   rooms.set(code, {
-    hostSocket: hostSocketId,
+    hostSocket,
     players: new Map(),
     scores: new Map(),
+    stats: new Map(),
     questions: new Map(),
     playerOrder: [],
     currentRoundIndex: 0,
     currentAsker: null,
+    currentQuestion: null,
     answer: null,
     lies: new Map(),
     votes: new Map(),
+    roundStats: [],
+    state: "waiting"
   });
 
   return code;
@@ -49,38 +65,76 @@ function createRoom(hostSocketId) {
 
 /* ================= HOST ================= */
 
-hostNamespace.on("connection", (socket) => {
+hostNS.on("connection", (socket) => {
 
   socket.on("createRoom", async () => {
     const code = createRoom(socket.id);
     socket.join(code);
 
-    const joinURL = `${process.env.PUBLIC_URL || `http://localhost:${PORT}`}/player.html?room=${code}`;
+    const joinURL = `${PUBLIC_URL}/player.html?room=${code}`;
     const qr = await QRCode.toDataURL(joinURL);
 
     socket.emit("roomCreated", { code, qr });
+  });
+
+  socket.on("startGame", (roomCode) => {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    if (room.questions.size !== room.players.size) return;
+
+    room.playerOrder = shuffle([...room.players.keys()]);
+    room.currentRoundIndex = 0;
+
+    startRound(roomCode);
   });
 
 });
 
 /* ================= PLAYER ================= */
 
-playerNamespace.on("connection", (socket) => {
+playerNS.on("connection", (socket) => {
 
-  socket.on("joinRoom", ({ roomCode, name }) => {
+  socket.on("joinRoom", ({ roomCode, name, playerId, token }) => {
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    const playerId = crypto.randomUUID();
+    // 🔁 Reconexión segura
+    if (playerId && token && verify(playerId, token)) {
+      const existing = room.players.get(playerId);
+      if (existing) {
+        existing.socketId = socket.id;
 
-    room.players.set(playerId, { name, socketId: socket.id });
-    room.scores.set(playerId, 0);
+        socket.join(roomCode);
+        socket.data.playerId = playerId;
+        socket.data.roomCode = roomCode;
+
+        restorePlayerState(socket, room, roomCode);
+        return;
+      }
+    }
+
+    // 🆕 Nuevo jugador
+    const newId = crypto.randomUUID();
+    const newToken = sign(newId);
+
+    room.players.set(newId, { name, socketId: socket.id });
+    room.scores.set(newId, 0);
+    room.stats.set(newId, {
+      truthsGuessed: 0,
+      liesFooledOthers: 0,
+      gotFooled: 0
+    });
 
     socket.join(roomCode);
-    socket.data.playerId = playerId;
+    socket.data.playerId = newId;
     socket.data.roomCode = roomCode;
 
-    hostNamespace.to(room.hostSocket).emit("updatePlayers",
+    socket.emit("authAssigned", {
+      playerId: newId,
+      token: newToken
+    });
+
+    hostNS.to(room.hostSocket).emit("updatePlayers",
       [...room.players.values()].map(p => p.name)
     );
   });
@@ -92,7 +146,7 @@ playerNamespace.on("connection", (socket) => {
 
     room.questions.set(socket.data.playerId, { question, answer });
 
-    hostNamespace.to(room.hostSocket).emit("questionsProgress", {
+    hostNS.to(room.hostSocket).emit("questionsProgress", {
       submitted: room.questions.size,
       total: room.players.size
     });
@@ -116,16 +170,6 @@ playerNamespace.on("connection", (socket) => {
 
 /* ================= GAME FLOW ================= */
 
-function startGame(roomCode) {
-  const room = rooms.get(roomCode);
-  if (!room) return;
-
-  room.playerOrder = shuffle([...room.players.keys()]);
-  room.currentRoundIndex = 0;
-
-  startRound(roomCode);
-}
-
 function startRound(roomCode) {
   const room = rooms.get(roomCode);
   if (!room) return;
@@ -139,12 +183,14 @@ function startRound(roomCode) {
   const { question, answer } = room.questions.get(askerId);
 
   room.currentAsker = askerId;
+  room.currentQuestion = question;
   room.answer = answer;
   room.lies.clear();
   room.votes.clear();
+  room.state = "writing";
 
-  hostNamespace.to(room.hostSocket).emit("tvQuestion", question);
-  playerNamespace.to(roomCode).emit("playerWrite", { askerId });
+  hostNS.to(room.hostSocket).emit("tvQuestion", question);
+  playerNS.to(roomCode).emit("playerWrite", { askerId });
 
   setTimeout(() => startVoting(roomCode), WRITE_TIME);
 }
@@ -153,14 +199,16 @@ function startVoting(roomCode) {
   const room = rooms.get(roomCode);
   if (!room) return;
 
+  room.state = "voting";
+
   const options = [
     ...room.lies.entries(),
-    ["truth", room.answer],
+    ["truth", room.answer]
   ].map(([id, text]) => ({ id, text }));
 
   shuffle(options);
 
-  playerNamespace.to(roomCode).emit("playerVote", {
+  playerNS.to(roomCode).emit("playerVote", {
     options,
     askerId: room.currentAsker
   });
@@ -173,13 +221,18 @@ function calculateScores(roomCode) {
   if (!room) return;
 
   let truthVotes = 0;
+  const lieVotesCount = new Map();
 
   for (const [voterId, voteId] of room.votes.entries()) {
     if (voteId === "truth") {
       truthVotes++;
       room.scores.set(voterId, room.scores.get(voterId) + 2);
+      room.stats.get(voterId).truthsGuessed++;
     } else if (room.scores.has(voteId)) {
       room.scores.set(voteId, room.scores.get(voteId) + 1);
+      room.stats.get(voteId).liesFooledOthers++;
+      room.stats.get(voterId).gotFooled++;
+      lieVotesCount.set(voteId, (lieVotesCount.get(voteId) || 0) + 1);
     }
   }
 
@@ -190,7 +243,13 @@ function calculateScores(roomCode) {
     );
   }
 
-  hostNamespace.to(room.hostSocket).emit("tvResults", {
+  room.roundStats.push({
+    question: room.currentQuestion,
+    truthVotes,
+    lieVotesCount
+  });
+
+  hostNS.to(room.hostSocket).emit("tvResults", {
     answer: room.answer,
     scores: Object.fromEntries(room.scores)
   });
@@ -204,9 +263,65 @@ function endGame(roomCode) {
   if (!room) return;
 
   const ranking = [...room.scores.entries()]
-    .sort((a,b) => b[1]-a[1]);
+    .sort((a,b) => b[1] - a[1])
+    .map(([id, score]) => ({
+      id,
+      name: room.players.get(id).name,
+      score,
+      stats: room.stats.get(id)
+    }));
 
-  hostNamespace.to(room.hostSocket).emit("tvFinal", ranking);
+  const mostLies = ranking.reduce((a,b) =>
+    b.stats.liesFooledOthers > a.stats.liesFooledOthers ? b : a
+  );
+
+  const mostTruths = ranking.reduce((a,b) =>
+    b.stats.truthsGuessed > a.stats.truthsGuessed ? b : a
+  );
+
+  const mostFooled = ranking.reduce((a,b) =>
+    b.stats.gotFooled > a.stats.gotFooled ? b : a
+  );
+
+  let topLiePlayer = null;
+  let topLieVotes = 0;
+
+  room.roundStats.forEach(r => {
+    r.lieVotesCount.forEach((votes, playerId) => {
+      if (votes > topLieVotes) {
+        topLieVotes = votes;
+        topLiePlayer = playerId;
+      }
+    });
+  });
+
+  hostNS.to(room.hostSocket).emit("tvFinal", {
+    ranking,
+    awards: {
+      mostLies,
+      mostTruths,
+      mostFooled,
+      mostBelievedLie: topLiePlayer
+        ? room.players.get(topLiePlayer).name
+        : null
+    }
+  });
+}
+
+function restorePlayerState(socket, room, roomCode) {
+  if (room.state === "writing") {
+    socket.emit("playerWrite", { askerId: room.currentAsker });
+  } else if (room.state === "voting") {
+    const options = [
+      ...room.lies.entries(),
+      ["truth", room.answer]
+    ].map(([id, text]) => ({ id, text }));
+    socket.emit("playerVote", { options, askerId: room.currentAsker });
+  } else if (room.state === "finished") {
+    socket.emit("playerFinal");
+  } else {
+    socket.emit("playerWaiting");
+  }
 }
 
 server.listen(PORT, () =>
