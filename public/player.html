@@ -7,21 +7,56 @@
 </head>
 <body class="bg-purple-600 text-white p-6">
 
-<input id="name" placeholder="Nombre">
-<button onclick="join()">Entrar</button>
+<div id="join">
+<input id="name" placeholder="Nombre" class="text-black p-2">
+<button onclick="join()" class="bg-yellow-400 text-black p-2">Entrar</button>
+</div>
 
-<div id="game"></div>
+<div id="game" class="mt-6"></div>
 
 <script>
 const socket = io("/player");
 const params = new URLSearchParams(window.location.search);
 const roomCode = params.get("room");
 
+let playerId = localStorage.getItem("mm_playerId");
+let token = localStorage.getItem("mm_token");
+
 function join(){
-  socket.emit("joinRoom",{
-    roomCode,
-    name:document.getElementById("name").value
+  const name = document.getElementById("name").value;
+  socket.emit("joinRoom",{ roomCode, name, playerId, token });
+}
+
+socket.on("authAssigned", data => {
+  playerId = data.playerId;
+  token = data.token;
+  localStorage.setItem("mm_playerId", playerId);
+  localStorage.setItem("mm_token", token);
+});
+
+socket.on("playerWrite", ()=>{
+  document.getElementById("game").innerHTML =
+    `<h2>Escribe tu mentira</h2>
+     <input id="lie" class="text-black p-2">
+     <button onclick="sendLie()">Enviar</button>`;
+});
+
+socket.on("playerVote", data=>{
+  let html="<h2>Vota</h2>";
+  data.options.forEach(opt=>{
+    html+=`<button onclick="vote('${opt.id}')">${opt.text}</button><br>`;
   });
+  document.getElementById("game").innerHTML=html;
+});
+
+function sendLie(){
+  socket.emit("submitLie", document.getElementById("lie").value);
+  document.getElementById("game").innerHTML="<h2>Esperando...</h2>";
+}
+
+function vote(id){
+  socket.emit("submitVote", id);
+  document.getElementById("game").innerHTML="<h2>Voto enviado</h2>";
 }
 </script>
 
