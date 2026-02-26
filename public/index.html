@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Mentira Maestra - TV</title>
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-black text-white flex flex-col items-center justify-center min-h-screen">
+
+<h1 class="text-4xl mb-6">Mentira Maestra</h1>
+<div id="screen"></div>
+
+<script>
+const socket = io("/host");
+
+socket.emit("createRoom");
+
+socket.on("roomCreated", data => {
+  document.getElementById("screen").innerHTML =
+    `<h2>Código: ${data.code}</h2>
+     <img src="${data.qr}" width="200" />
+     <p>Escanea para jugar</p>`;
+});
+</script>
+
+</body>
+</html>
