@@ -1,63 +1,152 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Mentira Maestra - Player</title>
-<script src="/socket.io/socket.io.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
+  <title>Mentira Maestra - Player</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-purple-600 text-white p-6">
 
-<div id="join">
-<input id="name" placeholder="Nombre" class="text-black p-2">
-<button onclick="join()" class="bg-yellow-400 text-black p-2">Entrar</button>
+<body class="bg-purple-600 text-white min-h-screen flex items-center justify-center">
+
+<div class="bg-white text-black p-6 rounded-2xl shadow-xl w-80">
+
+  <!-- JOIN SCREEN -->
+  <div id="joinScreen">
+    <h2 class="text-xl font-bold mb-4 text-center">Unirse a sala</h2>
+
+    <input id="roomInput"
+      placeholder="Código de sala"
+      class="w-full mb-3 p-2 border rounded"/>
+
+    <input id="nameInput"
+      placeholder="Tu nombre"
+      class="w-full mb-3 p-2 border rounded"/>
+
+    <button onclick="join()"
+      class="w-full bg-purple-600 text-white p-2 rounded hover:bg-purple-700">
+      Entrar
+    </button>
+
+    <p id="errorMsg" class="text-red-600 mt-3 text-sm"></p>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="gameScreen" class="hidden text-center">
+    <div id="gameContent"></div>
+  </div>
+
 </div>
-
-<div id="game" class="mt-6"></div>
 
 <script>
 const socket = io("/player");
+
 const params = new URLSearchParams(window.location.search);
-const roomCode = params.get("room");
+let roomCodeFromURL = params.get("room");
 
 let playerId = localStorage.getItem("mm_playerId");
 let token = localStorage.getItem("mm_token");
 
-function join(){
-  const name = document.getElementById("name").value;
-  socket.emit("joinRoom",{ roomCode, name, playerId, token });
+if (roomCodeFromURL) {
+  document.getElementById("roomInput").value = roomCodeFromURL;
 }
+
+function join(){
+  const roomCode = document.getElementById("roomInput").value.trim().toUpperCase();
+  const name = document.getElementById("nameInput").value.trim();
+
+  if (!roomCode || !name) {
+    document.getElementById("errorMsg").innerText =
+      "Debes ingresar código y nombre";
+    return;
+  }
+
+  socket.emit("joinRoom", {
+    roomCode,
+    name,
+    playerId,
+    token
+  });
+
+  document.getElementById("joinScreen").classList.add("hidden");
+  document.getElementById("gameScreen").classList.remove("hidden");
+  document.getElementById("gameContent").innerHTML =
+    "<h3>Conectando...</h3>";
+}
+
+/* ----------- AUTH ----------- */
 
 socket.on("authAssigned", data => {
   playerId = data.playerId;
   token = data.token;
+
   localStorage.setItem("mm_playerId", playerId);
   localStorage.setItem("mm_token", token);
 });
 
-socket.on("playerWrite", ()=>{
-  document.getElementById("game").innerHTML =
-    `<h2>Escribe tu mentira</h2>
-     <input id="lie" class="text-black p-2">
-     <button onclick="sendLie()">Enviar</button>`;
+/* ----------- ESTADOS ----------- */
+
+socket.on("playerWrite", () => {
+  document.getElementById("gameContent").innerHTML = `
+    <h3 class="mb-3">Escribe tu mentira</h3>
+    <input id="lieInput" class="w-full p-2 border rounded mb-3"/>
+    <button onclick="sendLie()"
+      class="w-full bg-green-500 text-white p-2 rounded">
+      Enviar
+    </button>
+  `;
 });
 
-socket.on("playerVote", data=>{
-  let html="<h2>Vota</h2>";
-  data.options.forEach(opt=>{
-    html+=`<button onclick="vote('${opt.id}')">${opt.text}</button><br>`;
+socket.on("playerVote", data => {
+  let html = "<h3 class='mb-3'>Vota la respuesta correcta</h3>";
+
+  data.options.forEach(opt => {
+    html += `
+      <button onclick="vote('${opt.id}')"
+        class="w-full bg-yellow-400 text-black p-2 rounded mb-2">
+        ${opt.text}
+      </button>
+    `;
   });
-  document.getElementById("game").innerHTML=html;
+
+  document.getElementById("gameContent").innerHTML = html;
 });
+
+socket.on("playerWaiting", () => {
+  document.getElementById("gameContent").innerHTML =
+    "<h3>Esperando a los demás...</h3>";
+});
+
+socket.on("playerFinal", () => {
+  document.getElementById("gameContent").innerHTML =
+    "<h3>Juego terminado 🎉</h3>";
+});
+
+/* ----------- ACTIONS ----------- */
 
 function sendLie(){
-  socket.emit("submitLie", document.getElementById("lie").value);
-  document.getElementById("game").innerHTML="<h2>Esperando...</h2>";
+  const lie = document.getElementById("lieInput").value.trim();
+  if (!lie) return;
+
+  socket.emit("submitLie", lie);
+
+  document.getElementById("gameContent").innerHTML =
+    "<h3>Mentira enviada ✔</h3>";
 }
 
 function vote(id){
   socket.emit("submitVote", id);
-  document.getElementById("game").innerHTML="<h2>Voto enviado</h2>";
+
+  document.getElementById("gameContent").innerHTML =
+    "<h3>Voto enviado ✔</h3>";
 }
+
+/* ----------- ERROR ----------- */
+
+socket.on("error", msg => {
+  document.getElementById("errorMsg").innerText = msg;
+  document.getElementById("joinScreen").classList.remove("hidden");
+  document.getElementById("gameScreen").classList.add("hidden");
+});
 </script>
 
 </body>
