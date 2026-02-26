@@ -1,13 +1,14 @@
 {
   "name": "mentira-maestra",
-  "version": "2.0.0",
-  "description": "Mentira Maestra - Party Game Show",
+  "version": "3.0.0",
+  "description": "Party game estilo Jackbox con QR y namespaces separados",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "socket.io": "^4.7.2"
+    "socket.io": "^4.7.2",
+    "qrcode": "^1.5.3"
   }
 }
