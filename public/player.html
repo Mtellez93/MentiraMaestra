@@ -1,59 +1,27 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Jugador - Mentira Maestra</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-
-<div class="card">
-  <input id="name" placeholder="Tu nombre">
-  <input id="room" placeholder="Código sala">
-  <button onclick="join()" class="primary">Entrar</button>
-</div>
-
-<div class="card" id="game" style="display:none;">
-  <h2 id="question"></h2>
-  <div id="inputArea"></div>
-</div>
-
+<title>Mentira Maestra - Player</title>
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-purple-600 text-white p-6">
+
+<input id="name" placeholder="Nombre">
+<button onclick="join()">Entrar</button>
+
+<div id="game"></div>
+
 <script>
-const socket = io();
-let roomCode = "";
+const socket = io("/player");
+const params = new URLSearchParams(window.location.search);
+const roomCode = params.get("room");
 
-function join() {
-  const name = document.getElementById("name").value;
-  roomCode = document.getElementById("room").value.toUpperCase();
-  socket.emit("joinRoom", { roomCode, name });
-  document.querySelectorAll(".card")[0].style.display = "none";
-  document.getElementById("game").style.display = "block";
-}
-
-socket.on("newRound", data => {
-  document.getElementById("question").innerText = data.question;
-  document.getElementById("inputArea").innerHTML =
-    `<input id="lie" placeholder="Escribe tu mentira">
-     <button class="primary" onclick="sendLie()">Enviar</button>`;
-});
-
-function sendLie() {
-  const lie = document.getElementById("lie").value;
-  socket.emit("submitLie", { roomCode, lie });
-  document.getElementById("inputArea").innerHTML = "Esperando a los demás...";
-}
-
-socket.on("startVoting", data => {
-  let html = "";
-  data.options.forEach(opt => {
-    html += `<button class="primary" onclick="vote('${opt.replace(/'/g,"\\'")}')">${opt}</button><br>`;
+function join(){
+  socket.emit("joinRoom",{
+    roomCode,
+    name:document.getElementById("name").value
   });
-  document.getElementById("inputArea").innerHTML = html;
-});
-
-function vote(option) {
-  socket.emit("submitVote", { roomCode, vote: option });
-  document.getElementById("inputArea").innerHTML = "Voto enviado...";
 }
 </script>
 
