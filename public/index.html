@@ -11,9 +11,13 @@
 
 <script>
 const socket = io("/host");
+let currentRoomCode = null;
+
 socket.emit("createRoom");
 
 socket.on("roomCreated", data => {
+  currentRoomCode = data.code;
+
   document.getElementById("screen").innerHTML = `
     <h1 class="text-5xl mb-4">Mentira Maestra</h1>
     <h2 class="text-3xl">Código: ${data.code}</h2>
@@ -21,6 +25,21 @@ socket.on("roomCreated", data => {
     <p class="mt-4">Escanea para jugar</p>
   `;
 });
+
+socket.on("updatePlayers", players => {
+  document.getElementById("screen").innerHTML = `
+    <h1 class="text-4xl mb-4">Jugadores</h1>
+    ${players.map(p=>`<div>${p}</div>`).join("")}
+    <button onclick="startGame()"
+      class="mt-6 bg-green-500 px-6 py-3 rounded">
+      Iniciar partida
+    </button>
+  `;
+});
+
+function startGame(){
+  socket.emit("startGame", currentRoomCode);
+}
 
 socket.on("tvQuestion", q => {
   document.getElementById("screen").innerHTML =
@@ -43,8 +62,7 @@ socket.on("tvFinal", data => {
     <div class="mt-8 text-xl">
       🎭 Maestro del engaño: <b>${data.awards.mostLies.name}</b><br>
       🎯 Mejor detective: <b>${data.awards.mostTruths.name}</b><br>
-      😵 Más engañado: <b>${data.awards.mostFooled.name}</b><br>
-      💥 Mentira más creída: <b>${data.awards.mostBelievedLie || "Nadie"}</b>
+      😵 Más engañado: <b>${data.awards.mostFooled.name}</b>
     </div>
   `;
 
