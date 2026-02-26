@@ -14,6 +14,7 @@
     🎭 Mentira Maestra
   </h1>
 
+  <!-- LOBBY -->
   <div id="lobbyContainer">
 
     <div id="roomSection" class="mb-8 hidden">
@@ -25,22 +26,23 @@
 
     <div id="playersSection" class="mb-8 hidden">
       <h2 class="text-2xl mb-4">Jugadores</h2>
-      <div id="playersList" class="space-y-2"></div>
-      <div id="readyCounter"
-           class="mt-6 text-3xl font-bold"></div>
+
+      <div id="playersList"
+           class="space-y-2 text-xl"></div>
 
       <button id="startBtn"
         onclick="startGame()"
-        disabled
-        class="mt-6 bg-green-500 px-6 py-3 rounded text-xl font-bold opacity-50">
+        class="mt-6 bg-green-500 px-6 py-3 rounded text-xl font-bold">
         Iniciar partida
       </button>
     </div>
 
   </div>
 
+  <!-- GAME AREA -->
   <div id="gameSection"></div>
 
+  <!-- TIMER -->
   <div id="timerContainer"
        class="mt-6 hidden w-full">
     <div class="w-full bg-gray-700 h-6 rounded">
@@ -57,9 +59,12 @@ const socket = io("/host");
 let currentRoomCode = null;
 let timerInterval = null;
 
+/* ================= CREATE ROOM ================= */
+
 socket.emit("createRoom");
 
 socket.on("roomCreated", data => {
+
   currentRoomCode = data.code;
 
   document.getElementById("roomSection")
@@ -75,23 +80,53 @@ socket.on("roomCreated", data => {
     .src = data.qr;
 });
 
+/* ================= SHOW PLAYERS ================= */
+
+socket.on("updatePlayers", players => {
+
+  const list =
+    document.getElementById("playersList");
+
+  list.innerHTML = "";
+
+  players.forEach(name => {
+    const div =
+      document.createElement("div");
+
+    div.className =
+      "bg-gray-800 px-4 py-2 rounded";
+
+    div.innerText = name;
+
+    list.appendChild(div);
+  });
+});
+
+/* ================= START GAME ================= */
+
 function startGame(){
   socket.emit("startGame", currentRoomCode);
 }
 
-socket.on("tvQuestion", q => {
+/* ================= GAME EVENTS ================= */
+
+socket.on("tvQuestion", question => {
+
   document.getElementById("lobbyContainer")
     .classList.add("hidden");
 
   document.getElementById("gameSection")
     .innerHTML =
-      `<h2 class="text-5xl mt-10">${q}</h2>`;
+      `<h2 class="text-5xl mt-10">${question}</h2>`;
 });
+
+/* ================= TIMER ================= */
 
 socket.on("tvTimer", data => {
 
   const container =
     document.getElementById("timerContainer");
+
   const bar =
     document.getElementById("timerBar");
 
@@ -103,6 +138,7 @@ socket.on("tvTimer", data => {
   clearInterval(timerInterval);
 
   timerInterval = setInterval(() => {
+
     const elapsed = Date.now() - start;
     const remaining =
       Math.max(duration - elapsed, 0);
@@ -120,12 +156,17 @@ socket.on("tvTimer", data => {
   }, 100);
 });
 
+/* ================= RESULTS ================= */
+
 socket.on("tvResults", data => {
+
   document.getElementById("gameSection")
     .innerHTML =
       `<h2 class="text-4xl mt-10">Respuesta:</h2>
        <p class="text-3xl mt-4">${data.answer}</p>`;
 });
+
+/* ================= FINAL ================= */
 
 socket.on("tvFinal", data => {
 
