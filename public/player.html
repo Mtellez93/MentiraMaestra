@@ -12,10 +12,9 @@
 
 <body class="bg-gradient-to-br from-purple-700 to-pink-600 text-white min-h-screen flex flex-col">
 
-<!-- CONTENEDOR PRINCIPAL -->
 <div class="flex-1 flex flex-col justify-center px-6">
 
-  <!-- JOIN SCREEN -->
+  <!-- JOIN -->
   <div id="joinScreen" class="space-y-4">
 
     <h1 class="text-3xl font-bold text-center mb-6">
@@ -38,7 +37,7 @@
     <p id="errorMsg" class="text-red-200 text-center text-sm"></p>
   </div>
 
-  <!-- GAME SCREEN -->
+  <!-- GAME -->
   <div id="gameScreen"
        class="hidden flex flex-col justify-center space-y-6">
 
@@ -60,8 +59,6 @@ let token = localStorage.getItem("mm_token");
 if (roomFromURL) {
   document.getElementById("roomInput").value = roomFromURL;
 }
-
-/* ================= JOIN ================= */
 
 function join(){
   const roomCode =
@@ -96,8 +93,6 @@ function join(){
       "<h2 class='text-xl'>Conectando...</h2>";
 }
 
-/* ================= AUTH ================= */
-
 socket.on("authAssigned", data => {
   playerId = data.playerId;
   token = data.token;
@@ -106,7 +101,7 @@ socket.on("authAssigned", data => {
   localStorage.setItem("mm_token", token);
 });
 
-/* ================= QUESTION PHASE ================= */
+/* QUESTION PHASE */
 
 socket.on("playerQuestionPhase", () => {
   document.getElementById("gameContent")
@@ -124,7 +119,7 @@ socket.on("playerQuestionPhase", () => {
         placeholder="Respuesta correcta..." />
 
       <button onclick="sendQuestion()"
-        class="w-full bg-green-400 text-black text-lg font-bold p-4 rounded-xl active:scale-95 transition">
+        class="w-full bg-green-400 text-black text-lg font-bold p-4 rounded-xl">
         Enviar
       </button>
     `;
@@ -146,7 +141,7 @@ function sendQuestion(){
       "<h2 class='text-xl'>Pregunta enviada ✔</h2>";
 }
 
-/* ================= WRITE LIE ================= */
+/* WRITE LIE */
 
 socket.on("playerWrite", () => {
   document.getElementById("gameContent")
@@ -160,7 +155,7 @@ socket.on("playerWrite", () => {
         placeholder="Tu mentira..." />
 
       <button onclick="sendLie()"
-        class="w-full bg-green-400 text-black text-lg font-bold p-4 rounded-xl active:scale-95 transition">
+        class="w-full bg-green-400 text-black text-lg font-bold p-4 rounded-xl">
         Enviar
       </button>
     `;
@@ -179,19 +174,18 @@ function sendLie(){
       "<h2 class='text-xl'>Mentira enviada ✔</h2>";
 }
 
-/* ================= VOTING ================= */
+/* VOTE */
 
 socket.on("playerVote", data => {
-  let html = `
-    <h2 class="text-2xl font-bold mb-4">
-      ¿Cuál es la correcta?
-    </h2>
-  `;
+  let html =
+    `<h2 class="text-2xl font-bold mb-4">
+       ¿Cuál es la correcta?
+     </h2>`;
 
   data.options.forEach(opt => {
     html += `
       <button onclick="vote('${opt.id}')"
-        class="w-full bg-yellow-400 text-black text-lg font-bold p-4 rounded-xl mb-3 active:scale-95 transition">
+        class="w-full bg-yellow-400 text-black text-lg font-bold p-4 rounded-xl mb-3">
         ${opt.text}
       </button>
     `;
@@ -209,28 +203,9 @@ function vote(id){
       "<h2 class='text-xl'>Voto enviado ✔</h2>";
 }
 
-/* ================= FINAL ================= */
-
-socket.on("playerFinal", () => {
-  document.getElementById("gameContent")
-    .innerHTML = `
-      <h2 class="text-3xl font-bold">
-        🎉 Juego terminado
-      </h2>
-    `;
-});
-
-/* ================= ERROR ================= */
-
 socket.on("error", msg => {
   document.getElementById("errorMsg")
     .innerText = msg;
-
-  document.getElementById("joinScreen")
-    .classList.remove("hidden");
-
-  document.getElementById("gameScreen")
-    .classList.add("hidden");
 });
 </script>
 
