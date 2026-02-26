@@ -1,7 +1,7 @@
 {
   "name": "mentira-maestra",
-  "version": "3.0.0",
-  "description": "Party game estilo Jackbox con QR y namespaces separados",
+  "version": "4.0.0",
+  "description": "Party game estilo Jackbox con reconexion segura y awards por partida",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
