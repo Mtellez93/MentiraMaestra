@@ -1,6 +1,6 @@
 {
   "name": "mentira-maestra",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": "Party game estilo Jackbox con reconexion segura y awards por partida",
   "main": "server.js",
   "scripts": {
