@@ -1,0 +1,272 @@
+/* ============================= */
+/* BASE GENERAL */
+/* ============================= */
+
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #1f1c2c, #928dab);
+  color: white;
+  margin: 0;
+  overflow-x: hidden;
+  transition: 0.5s;
+}
+
+.fade {
+  filter: brightness(0.6);
+}
+
+/* ============================= */
+/* INTRO CINEMÁTICA */
+/* ============================= */
+
+.introScreen {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  background: black;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeOutIntro 3s forwards;
+  z-index: 9999;
+}
+
+.introTitle {
+  font-size: 60px;
+  color: gold;
+  letter-spacing: 4px;
+  animation: zoomIntro 3s;
+}
+
+@keyframes fadeOutIntro {
+  0% {opacity:1;}
+  85% {opacity:1;}
+  100% {opacity:0; visibility:hidden;}
+}
+
+@keyframes zoomIntro {
+  0% {transform:scale(0.5);}
+  100% {transform:scale(1);}
+}
+
+/* ============================= */
+/* LAYOUT GENERAL */
+/* ============================= */
+
+.screen {
+  padding: 30px;
+}
+
+.card {
+  background: rgba(255,255,255,0.08);
+  padding: 30px;
+  margin: 20px auto;
+  width: 80%;
+  border-radius: 20px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 40px rgba(0,0,0,0.4);
+  transition: 0.4s;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+}
+
+.center {
+  text-align: center;
+}
+
+.title {
+  font-size: 42px;
+  letter-spacing: 2px;
+}
+
+/* ============================= */
+/* BOTONES */
+/* ============================= */
+
+.primary {
+  background: linear-gradient(45deg, #ff416c, #ff4b2b);
+  border: none;
+  padding: 14px 24px;
+  font-size: 18px;
+  border-radius: 14px;
+  color: white;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.primary:hover {
+  transform: scale(1.08);
+}
+
+.big {
+  font-size: 22px;
+  padding: 16px 30px;
+}
+
+/* ============================= */
+/* JUGADORES */
+/* ============================= */
+
+.player {
+  padding: 8px;
+  margin: 5px;
+  border-radius: 8px;
+  font-weight: bold;
+  color: white;
+}
+
+/* ============================= */
+/* TIMER */
+/* ============================= */
+
+.timer {
+  font-size: 60px;
+  margin: 20px;
+  color: #ffd700;
+  text-shadow: 0 0 15px rgba(255,215,0,0.6);
+}
+
+/* ============================= */
+/* REVEAL CARDS */
+/* ============================= */
+
+.revealCard {
+  background: rgba(255,255,255,0.12);
+  padding: 20px;
+  margin: 15px auto;
+  border-radius: 15px;
+  width: 60%;
+  animation: slideUp 0.6s ease-out;
+  position: relative;
+  box-shadow: 0 0 20px rgba(0,0,0,0.4);
+}
+
+.revealText {
+  font-size: 22px;
+  margin-bottom: 10px;
+}
+
+.correctCard {
+  background: linear-gradient(45deg,#00e676,#00c853);
+  color: black;
+  transform: scale(1.05);
+  box-shadow: 0 0 25px #00ff88;
+}
+
+/* ============================= */
+/* BURBUJAS DE VOTOS */
+/* ============================= */
+
+.votes {
+  margin-top: 10px;
+}
+
+.voteBubble {
+  background: #ff4b2b;
+  padding: 5px 10px;
+  margin: 4px;
+  border-radius: 20px;
+  display: inline-block;
+  font-size: 14px;
+  animation: popIn 0.4s ease;
+}
+
+@keyframes popIn {
+  from {transform: scale(0);}
+  to {transform: scale(1);}
+}
+
+/* ============================= */
+/* RESUMEN ENGAÑOS */
+/* ============================= */
+
+.trickSummary {
+  font-size: 18px;
+  margin-top: 10px;
+  color: #ffd700;
+  animation: fadeIn 1s ease;
+}
+
+@keyframes fadeIn {
+  from {opacity:0;}
+  to {opacity:1;}
+}
+
+/* ============================= */
+/* TABLA */
+/* ============================= */
+
+.score {
+  padding: 10px;
+  margin: 6px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.1);
+  transition: 0.3s;
+}
+
+.score:hover {
+  transform: scale(1.05);
+}
+
+.first {
+  background: linear-gradient(45deg,#ffd700,#ff9800);
+  color: black;
+  font-weight: bold;
+  box-shadow: 0 0 20px gold;
+}
+
+/* ============================= */
+/* GANADOR FINAL */
+/* ============================= */
+
+.winner {
+  font-size: 40px;
+  color: gold;
+  margin-top: 20px;
+  text-shadow: 0 0 20px gold;
+}
+
+/* ============================= */
+/* ANIMACIONES */
+/* ============================= */
+
+@keyframes slideUp {
+  from {transform: translateY(40px); opacity: 0;}
+  to {transform: translateY(0); opacity: 1;}
+}
+
+/* ============================= */
+/* INPUTS (PLAYER) */
+/* ============================= */
+
+input {
+  padding: 10px;
+  margin: 5px;
+  border-radius: 8px;
+  border: none;
+  font-size: 16px;
+}
+
+/* ============================= */
+/* RESPONSIVE */
+/* ============================= */
+
+@media (max-width: 768px) {
+  .card {
+    width: 95%;
+  }
+
+  .revealCard {
+    width: 90%;
+  }
+
+  .title {
+    font-size: 32px;
+  }
+
+  .timer {
+    font-size: 40px;
+  }
+}
