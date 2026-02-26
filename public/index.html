@@ -5,21 +5,50 @@
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-black text-white flex flex-col items-center justify-center min-h-screen">
+<body class="bg-black text-white min-h-screen flex flex-col items-center justify-center">
 
-<h1 class="text-4xl mb-6">Mentira Maestra</h1>
-<div id="screen"></div>
+<div id="screen" class="text-center"></div>
 
 <script>
 const socket = io("/host");
-
 socket.emit("createRoom");
 
 socket.on("roomCreated", data => {
+  document.getElementById("screen").innerHTML = `
+    <h1 class="text-5xl mb-4">Mentira Maestra</h1>
+    <h2 class="text-3xl">Código: ${data.code}</h2>
+    <img src="${data.qr}" class="mx-auto mt-6 w-48">
+    <p class="mt-4">Escanea para jugar</p>
+  `;
+});
+
+socket.on("tvQuestion", q => {
   document.getElementById("screen").innerHTML =
-    `<h2>Código: ${data.code}</h2>
-     <img src="${data.qr}" width="200" />
-     <p>Escanea para jugar</p>`;
+    `<h1 class="text-4xl">${q}</h1>`;
+});
+
+socket.on("tvResults", data => {
+  document.getElementById("screen").innerHTML =
+    `<h1 class="text-4xl">Respuesta:</h1>
+     <p class="text-3xl mt-4">${data.answer}</p>`;
+});
+
+socket.on("tvFinal", data => {
+  let html = `<h1 class="text-5xl mb-6">🏆 RESULTADOS</h1>`;
+  html += data.ranking.map((p,i)=>
+    `<div class="text-2xl">${i+1}. ${p.name} - ${p.score} pts</div>`
+  ).join("");
+
+  html += `
+    <div class="mt-8 text-xl">
+      🎭 Maestro del engaño: <b>${data.awards.mostLies.name}</b><br>
+      🎯 Mejor detective: <b>${data.awards.mostTruths.name}</b><br>
+      😵 Más engañado: <b>${data.awards.mostFooled.name}</b><br>
+      💥 Mentira más creída: <b>${data.awards.mostBelievedLie || "Nadie"}</b>
+    </div>
+  `;
+
+  document.getElementById("screen").innerHTML = html;
 });
 </script>
 
