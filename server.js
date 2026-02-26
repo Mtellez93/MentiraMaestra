@@ -35,13 +35,7 @@ function normalizeText(text) {
     .trim();
 }
 
-const sign = (id) =>
-  crypto.createHmac("sha256", SECRET).update(id).digest("hex");
-
-const verify = (id, token) =>
-  sign(id) === token;
-
-const shuffle = (arr) =>
+const shuffle = arr =>
   arr.sort(() => Math.random() - 0.5);
 
 const hostNS = io.of("/host");
@@ -58,7 +52,6 @@ function createRoom(hostSocket) {
     hostSocket,
     players: new Map(),
     scores: new Map(),
-    stats: new Map(),
     questions: new Map(),
     playerOrder: [],
     currentRoundIndex: 0,
@@ -67,7 +60,8 @@ function createRoom(hostSocket) {
     lies: new Map(),
     votes: new Map(),
     instantTruths: new Set(),
-    state: "waiting"
+    writeTimeout: null,
+    voteTimeout: null
   });
 
   return code;
@@ -75,7 +69,7 @@ function createRoom(hostSocket) {
 
 /* ================= HOST ================= */
 
-hostNS.on("connection", (socket) => {
+hostNS.on("connection", socket => {
 
   socket.on("createRoom", async () => {
     const code = createRoom(socket.id);
@@ -89,7 +83,7 @@ hostNS.on("connection", (socket) => {
     socket.emit("roomCreated", { code, qr });
   });
 
-  socket.on("startGame", (roomCode) => {
+  socket.on("startGame", roomCode => {
     const room = rooms.get(roomCode);
     if (!room) return;
     if (room.questions.size !== room.players.size) return;
@@ -102,21 +96,17 @@ hostNS.on("connection", (socket) => {
     startRound(roomCode);
   });
 
-  socket.on("newGame", (roomCode) => {
+  socket.on("newGame", roomCode => {
     const room = rooms.get(roomCode);
     if (!room) return;
 
-    room.players.forEach((_, id) => {
-      room.scores.set(id, 0);
-    });
+    room.players.forEach((_, id) =>
+      room.scores.set(id, 0)
+    );
 
     room.questions.clear();
     room.playerOrder = [];
     room.currentRoundIndex = 0;
-    room.lies.clear();
-    room.votes.clear();
-    room.instantTruths = new Set();
-    room.state = "waiting";
 
     playerNS.to(roomCode)
       .emit("playerQuestionPhase");
@@ -131,48 +121,32 @@ hostNS.on("connection", (socket) => {
 
 /* ================= PLAYER ================= */
 
-playerNS.on("connection", (socket) => {
+playerNS.on("connection", socket => {
 
-  socket.on("joinRoom", ({ roomCode, name, playerId, token }) => {
+  socket.on("joinRoom", ({ roomCode, name }) => {
     const room = rooms.get(roomCode);
-    if (!room) {
-      socket.emit("error", "Sala no existe");
-      return;
-    }
+    if (!room) return;
 
-    if (playerId && token && verify(playerId, token)) {
-      const existing = room.players.get(playerId);
-      if (existing) {
-        existing.socketId = socket.id;
-        socket.join(roomCode);
-        socket.data.playerId = playerId;
-        socket.data.roomCode = roomCode;
-        socket.emit("playerQuestionPhase");
-        return;
-      }
-    }
+    const id = crypto.randomUUID();
 
-    const newId = crypto.randomUUID();
-    const newToken = sign(newId);
+    room.players.set(id, {
+      name,
+      socketId: socket.id
+    });
 
-    room.players.set(newId, { name, socketId: socket.id });
-    room.scores.set(newId, 0);
+    room.scores.set(id, 0);
 
     socket.join(roomCode);
-    socket.data.playerId = newId;
+    socket.data.playerId = id;
     socket.data.roomCode = roomCode;
-
-    socket.emit("authAssigned", {
-      playerId: newId,
-      token: newToken
-    });
 
     socket.emit("playerQuestionPhase");
 
-    hostNS.to(room.hostSocket).emit(
-      "updatePlayers",
-      [...room.players.values()].map(p => p.name)
-    );
+    hostNS.to(room.hostSocket)
+      .emit("updatePlayers",
+        [...room.players.values()]
+          .map(p => p.name)
+      );
   });
 
   socket.on("submitQuestion", ({ question, answer }) => {
@@ -180,14 +154,15 @@ playerNS.on("connection", (socket) => {
     if (!room) return;
     if (question.length < 10 || answer.length < 3) return;
 
-    room.questions.set(socket.data.playerId, { question, answer });
+    room.questions.set(socket.data.playerId,
+      { question, answer });
 
-    const playersStatus = [...room.players.entries()].map(
-      ([id, player]) => ({
-        name: player.name,
-        ready: room.questions.has(id)
-      })
-    );
+    const playersStatus =
+      [...room.players.entries()]
+        .map(([id, player]) => ({
+          name: player.name,
+          ready: room.questions.has(id)
+        }));
 
     hostNS.to(room.hostSocket)
       .emit("lobbyUpdate", { playersStatus });
@@ -198,7 +173,7 @@ playerNS.on("connection", (socket) => {
     }
   });
 
-  socket.on("submitLie", (lie) => {
+  socket.on("submitLie", lie => {
     const room = rooms.get(socket.data.roomCode);
     if (!room) return;
     if (socket.data.playerId === room.currentAsker) return;
@@ -208,22 +183,30 @@ playerNS.on("connection", (socket) => {
 
     if (normalizedLie === normalizedTruth) {
       room.instantTruths.add(socket.data.playerId);
-      return;
+    } else {
+      room.lies.set(socket.data.playerId, lie);
     }
 
-    const existing = [...room.lies.values()]
-      .map(l => normalizeText(l));
-
-    if (existing.includes(normalizedLie)) return;
-
-    room.lies.set(socket.data.playerId, lie);
+    if (
+      room.lies.size + room.instantTruths.size
+      === room.players.size - 1
+    ) {
+      clearTimeout(room.writeTimeout);
+      startVoting(socket.data.roomCode);
+    }
   });
 
-  socket.on("submitVote", (voteId) => {
+  socket.on("submitVote", voteId => {
     const room = rooms.get(socket.data.roomCode);
     if (!room) return;
     if (socket.data.playerId === room.currentAsker) return;
+
     room.votes.set(socket.data.playerId, voteId);
+
+    if (room.votes.size === room.players.size - 1) {
+      clearTimeout(room.voteTimeout);
+      calculateScores(socket.data.roomCode);
+    }
   });
 });
 
@@ -254,70 +237,65 @@ function startRound(roomCode) {
   hostNS.to(room.hostSocket)
     .emit("tvQuestion", question);
 
-  playerNS.to(roomCode)
-    .emit("playerWrite", { askerId });
+  hostNS.to(room.hostSocket)
+    .emit("tvTimer", {
+      duration: WRITE_TIME
+    });
 
-  setTimeout(() => startVoting(roomCode),
-    WRITE_TIME);
+  playerNS.to(roomCode)
+    .emit("playerWrite");
+
+  room.writeTimeout =
+    setTimeout(() =>
+      startVoting(roomCode),
+      WRITE_TIME
+    );
 }
 
 function startVoting(roomCode) {
   const room = rooms.get(roomCode);
   if (!room) return;
 
-  const unique = new Map();
+  const options = [
+    ...room.lies.entries(),
+    ["truth", room.answer]
+  ].map(([id, text]) => ({ id, text }));
 
-  [...room.lies.entries(),
-   ["truth", room.answer]
-  ].forEach(([id, text]) => {
-    const key = normalizeText(text);
-    if (!unique.has(key)) {
-      unique.set(key, { id, text });
-    }
-  });
-
-  const options = [...unique.values()];
   shuffle(options);
 
-  playerNS.to(roomCode)
-    .emit("playerVote", {
-      options,
-      askerId: room.currentAsker
+  hostNS.to(room.hostSocket)
+    .emit("tvTimer", {
+      duration: VOTE_TIME
     });
 
-  setTimeout(() => calculateScores(roomCode),
-    VOTE_TIME);
+  playerNS.to(roomCode)
+    .emit("playerVote", { options });
+
+  room.voteTimeout =
+    setTimeout(() =>
+      calculateScores(roomCode),
+      VOTE_TIME
+    );
 }
 
 function calculateScores(roomCode) {
   const room = rooms.get(roomCode);
   if (!room) return;
 
-  const instantWinners = [];
-
   room.instantTruths.forEach(id => {
-    const autoPoints = room.players.size - 1;
+    const autoPoints =
+      room.players.size - 1;
+
     room.scores.set(
       id,
       room.scores.get(id) + autoPoints
     );
-    instantWinners.push(
-      room.players.get(id).name
-    );
   });
 
-  if (instantWinners.length > 0) {
-    hostNS.to(room.hostSocket)
-      .emit("instantTruthReveal", {
-        players: instantWinners
-      });
-  }
+  for (const [voterId, voteId]
+       of room.votes.entries()) {
 
-  let truthVotes = 0;
-
-  for (const [voterId, voteId] of room.votes.entries()) {
     if (voteId === "truth") {
-      truthVotes++;
       room.scores.set(
         voterId,
         room.scores.get(voterId) + 2
@@ -338,8 +316,10 @@ function calculateScores(roomCode) {
 
   room.currentRoundIndex++;
 
-  setTimeout(() => startRound(roomCode),
-    5000);
+  setTimeout(() =>
+    startRound(roomCode),
+    4000
+  );
 }
 
 function endGame(roomCode) {
@@ -348,16 +328,16 @@ function endGame(roomCode) {
 
   const ranking =
     [...room.scores.entries()]
-    .sort((a,b)=>b[1]-a[1])
-    .map(([id,score])=>({
-      name: room.players.get(id).name,
-      score
-    }));
+      .sort((a,b)=>b[1]-a[1])
+      .map(([id,score])=>({
+        name: room.players.get(id).name,
+        score
+      }));
 
   hostNS.to(room.hostSocket)
     .emit("tvFinal", { ranking });
 }
 
 server.listen(PORT, () =>
-  console.log(`Servidor corriendo en puerto ${PORT}`)
+  console.log("Servidor iniciado")
 );
