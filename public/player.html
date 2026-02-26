@@ -1,38 +1,47 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Mentira Maestra - Player</title>
-<script src="/socket.io/socket.io.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
+  <title>Mentira Maestra - Player</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-purple-600 text-white min-h-screen flex items-center justify-center">
 
-<div class="bg-white text-black p-6 rounded-2xl shadow-xl w-80">
+<body class="bg-gradient-to-br from-purple-700 to-pink-600 text-white min-h-screen flex flex-col">
 
-<div id="joinScreen">
-  <h2 class="text-xl font-bold mb-4 text-center">Unirse</h2>
+<!-- CONTENEDOR PRINCIPAL -->
+<div class="flex-1 flex flex-col justify-center px-6">
 
-  <input id="roomInput"
-    placeholder="Código"
-    class="w-full mb-3 p-2 border rounded">
+  <!-- JOIN -->
+  <div id="joinScreen" class="space-y-4">
 
-  <input id="nameInput"
-    placeholder="Nombre"
-    class="w-full mb-3 p-2 border rounded">
+    <h1 class="text-3xl font-bold text-center mb-6">
+      🎭 Mentira Maestra
+    </h1>
 
-  <button onclick="join()"
-    class="w-full bg-purple-600 text-white p-2 rounded">
-    Entrar
-  </button>
+    <input id="roomInput"
+      placeholder="Código de sala"
+      class="w-full p-4 rounded-xl text-black text-lg" />
 
-  <p id="errorMsg"
-     class="text-red-600 mt-2 text-sm"></p>
-</div>
+    <input id="nameInput"
+      placeholder="Tu nombre"
+      class="w-full p-4 rounded-xl text-black text-lg" />
 
-<div id="gameScreen"
-     class="hidden text-center">
-  <div id="gameContent"></div>
-</div>
+    <button onclick="join()"
+      class="w-full bg-yellow-400 text-black text-lg font-bold p-4 rounded-xl active:scale-95 transition">
+      Entrar
+    </button>
+
+    <p id="errorMsg" class="text-red-200 text-center text-sm"></p>
+  </div>
+
+  <!-- GAME -->
+  <div id="gameScreen" class="hidden flex flex-col justify-center space-y-6">
+
+    <div id="gameContent" class="text-center"></div>
+
+  </div>
 
 </div>
 
@@ -41,13 +50,14 @@ const socket = io("/player");
 const params = new URLSearchParams(window.location.search);
 
 let roomFromURL = params.get("room");
-
 let playerId = localStorage.getItem("mm_playerId");
 let token = localStorage.getItem("mm_token");
 
 if (roomFromURL) {
   document.getElementById("roomInput").value = roomFromURL;
 }
+
+/* ================= JOIN ================= */
 
 function join(){
   const roomCode =
@@ -78,8 +88,10 @@ function join(){
     .classList.remove("hidden");
 
   document.getElementById("gameContent")
-    .innerHTML = "<h3>Conectando...</h3>";
+    .innerHTML = "<h2 class='text-xl'>Conectando...</h2>";
 }
+
+/* ================= AUTH ================= */
 
 socket.on("authAssigned", data => {
   playerId = data.playerId;
@@ -89,31 +101,46 @@ socket.on("authAssigned", data => {
   localStorage.setItem("mm_token", token);
 });
 
+/* ================= ESTADOS ================= */
+
 socket.on("playerWaiting", () => {
   document.getElementById("gameContent")
-    .innerHTML = "<h3>Esperando inicio...</h3>";
+    .innerHTML = `
+      <h2 class="text-2xl font-bold">
+        ⏳ Esperando inicio...
+      </h2>
+    `;
 });
 
 socket.on("playerWrite", () => {
   document.getElementById("gameContent")
     .innerHTML = `
-      <h3>Escribe tu mentira</h3>
+      <h2 class="text-2xl font-bold mb-4">
+        Escribe tu mentira 😈
+      </h2>
+
       <input id="lieInput"
-        class="w-full p-2 border rounded mb-3">
+        class="w-full p-4 rounded-xl text-black text-lg mb-4"
+        placeholder="Tu mentira..." />
+
       <button onclick="sendLie()"
-        class="bg-green-500 text-white p-2 rounded">
+        class="w-full bg-green-400 text-black text-lg font-bold p-4 rounded-xl active:scale-95 transition">
         Enviar
       </button>
     `;
 });
 
 socket.on("playerVote", data => {
-  let html = "<h3>Vota la correcta</h3>";
+  let html = `
+    <h2 class="text-2xl font-bold mb-4">
+      ¿Cuál es la correcta?
+    </h2>
+  `;
 
   data.options.forEach(opt => {
     html += `
       <button onclick="vote('${opt.id}')"
-        class="w-full bg-yellow-400 text-black p-2 rounded mb-2">
+        class="w-full bg-yellow-400 text-black text-lg font-bold p-4 rounded-xl mb-3 active:scale-95 transition">
         ${opt.text}
       </button>
     `;
@@ -123,6 +150,17 @@ socket.on("playerVote", data => {
     .innerHTML = html;
 });
 
+socket.on("playerFinal", () => {
+  document.getElementById("gameContent")
+    .innerHTML = `
+      <h2 class="text-3xl font-bold">
+        🎉 Juego terminado
+      </h2>
+    `;
+});
+
+/* ================= ACTIONS ================= */
+
 function sendLie(){
   const lie =
     document.getElementById("lieInput").value;
@@ -130,15 +168,29 @@ function sendLie(){
   socket.emit("submitLie", lie);
 
   document.getElementById("gameContent")
-    .innerHTML = "<h3>Mentira enviada ✔</h3>";
+    .innerHTML = `
+      <h2 class="text-xl">
+        Mentira enviada ✔
+      </h2>
+    `;
 }
 
 function vote(id){
   socket.emit("submitVote", id);
 
   document.getElementById("gameContent")
-    .innerHTML = "<h3>Voto enviado ✔</h3>";
+    .innerHTML = `
+      <h2 class="text-xl">
+        Voto enviado ✔
+      </h2>
+    `;
 }
+
+/* ================= ERROR ================= */
+
+socket.on("error", msg => {
+  document.getElementById("errorMsg").innerText = msg;
+});
 </script>
 
 </body>
