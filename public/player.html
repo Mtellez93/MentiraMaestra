@@ -1,62 +1,66 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Mentira Maestra - Player</title>
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+<title>Mentira Maestra - Player</title>
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
 </head>
-
 <body class="bg-purple-600 text-white min-h-screen flex items-center justify-center">
 
 <div class="bg-white text-black p-6 rounded-2xl shadow-xl w-80">
 
-  <!-- JOIN SCREEN -->
-  <div id="joinScreen">
-    <h2 class="text-xl font-bold mb-4 text-center">Unirse a sala</h2>
+<div id="joinScreen">
+  <h2 class="text-xl font-bold mb-4 text-center">Unirse</h2>
 
-    <input id="roomInput"
-      placeholder="Código de sala"
-      class="w-full mb-3 p-2 border rounded"/>
+  <input id="roomInput"
+    placeholder="Código"
+    class="w-full mb-3 p-2 border rounded">
 
-    <input id="nameInput"
-      placeholder="Tu nombre"
-      class="w-full mb-3 p-2 border rounded"/>
+  <input id="nameInput"
+    placeholder="Nombre"
+    class="w-full mb-3 p-2 border rounded">
 
-    <button onclick="join()"
-      class="w-full bg-purple-600 text-white p-2 rounded hover:bg-purple-700">
-      Entrar
-    </button>
+  <button onclick="join()"
+    class="w-full bg-purple-600 text-white p-2 rounded">
+    Entrar
+  </button>
 
-    <p id="errorMsg" class="text-red-600 mt-3 text-sm"></p>
-  </div>
+  <p id="errorMsg"
+     class="text-red-600 mt-2 text-sm"></p>
+</div>
 
-  <!-- GAME SCREEN -->
-  <div id="gameScreen" class="hidden text-center">
-    <div id="gameContent"></div>
-  </div>
+<div id="gameScreen"
+     class="hidden text-center">
+  <div id="gameContent"></div>
+</div>
 
 </div>
 
 <script>
 const socket = io("/player");
-
 const params = new URLSearchParams(window.location.search);
-let roomCodeFromURL = params.get("room");
+
+let roomFromURL = params.get("room");
 
 let playerId = localStorage.getItem("mm_playerId");
 let token = localStorage.getItem("mm_token");
 
-if (roomCodeFromURL) {
-  document.getElementById("roomInput").value = roomCodeFromURL;
+if (roomFromURL) {
+  document.getElementById("roomInput").value = roomFromURL;
 }
 
 function join(){
-  const roomCode = document.getElementById("roomInput").value.trim().toUpperCase();
-  const name = document.getElementById("nameInput").value.trim();
+  const roomCode =
+    document.getElementById("roomInput")
+    .value.trim().toUpperCase();
+
+  const name =
+    document.getElementById("nameInput")
+    .value.trim();
 
   if (!roomCode || !name) {
-    document.getElementById("errorMsg").innerText =
-      "Debes ingresar código y nombre";
+    document.getElementById("errorMsg")
+      .innerText = "Completa todos los campos";
     return;
   }
 
@@ -67,13 +71,15 @@ function join(){
     token
   });
 
-  document.getElementById("joinScreen").classList.add("hidden");
-  document.getElementById("gameScreen").classList.remove("hidden");
-  document.getElementById("gameContent").innerHTML =
-    "<h3>Conectando...</h3>";
-}
+  document.getElementById("joinScreen")
+    .classList.add("hidden");
 
-/* ----------- AUTH ----------- */
+  document.getElementById("gameScreen")
+    .classList.remove("hidden");
+
+  document.getElementById("gameContent")
+    .innerHTML = "<h3>Conectando...</h3>";
+}
 
 socket.on("authAssigned", data => {
   playerId = data.playerId;
@@ -83,21 +89,26 @@ socket.on("authAssigned", data => {
   localStorage.setItem("mm_token", token);
 });
 
-/* ----------- ESTADOS ----------- */
+socket.on("playerWaiting", () => {
+  document.getElementById("gameContent")
+    .innerHTML = "<h3>Esperando inicio...</h3>";
+});
 
 socket.on("playerWrite", () => {
-  document.getElementById("gameContent").innerHTML = `
-    <h3 class="mb-3">Escribe tu mentira</h3>
-    <input id="lieInput" class="w-full p-2 border rounded mb-3"/>
-    <button onclick="sendLie()"
-      class="w-full bg-green-500 text-white p-2 rounded">
-      Enviar
-    </button>
-  `;
+  document.getElementById("gameContent")
+    .innerHTML = `
+      <h3>Escribe tu mentira</h3>
+      <input id="lieInput"
+        class="w-full p-2 border rounded mb-3">
+      <button onclick="sendLie()"
+        class="bg-green-500 text-white p-2 rounded">
+        Enviar
+      </button>
+    `;
 });
 
 socket.on("playerVote", data => {
-  let html = "<h3 class='mb-3'>Vota la respuesta correcta</h3>";
+  let html = "<h3>Vota la correcta</h3>";
 
   data.options.forEach(opt => {
     html += `
@@ -108,45 +119,26 @@ socket.on("playerVote", data => {
     `;
   });
 
-  document.getElementById("gameContent").innerHTML = html;
+  document.getElementById("gameContent")
+    .innerHTML = html;
 });
-
-socket.on("playerWaiting", () => {
-  document.getElementById("gameContent").innerHTML =
-    "<h3>Esperando a los demás...</h3>";
-});
-
-socket.on("playerFinal", () => {
-  document.getElementById("gameContent").innerHTML =
-    "<h3>Juego terminado 🎉</h3>";
-});
-
-/* ----------- ACTIONS ----------- */
 
 function sendLie(){
-  const lie = document.getElementById("lieInput").value.trim();
-  if (!lie) return;
+  const lie =
+    document.getElementById("lieInput").value;
 
   socket.emit("submitLie", lie);
 
-  document.getElementById("gameContent").innerHTML =
-    "<h3>Mentira enviada ✔</h3>";
+  document.getElementById("gameContent")
+    .innerHTML = "<h3>Mentira enviada ✔</h3>";
 }
 
 function vote(id){
   socket.emit("submitVote", id);
 
-  document.getElementById("gameContent").innerHTML =
-    "<h3>Voto enviado ✔</h3>";
+  document.getElementById("gameContent")
+    .innerHTML = "<h3>Voto enviado ✔</h3>";
 }
-
-/* ----------- ERROR ----------- */
-
-socket.on("error", msg => {
-  document.getElementById("errorMsg").innerText = msg;
-  document.getElementById("joinScreen").classList.remove("hidden");
-  document.getElementById("gameScreen").classList.add("hidden");
-});
 </script>
 
 </body>
