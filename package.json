@@ -1,0 +1,13 @@
+{
+  "name": "mentira-maestra",
+  "version": "2.0.0",
+  "description": "Mentira Maestra - Party Game Show",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  }
+}
